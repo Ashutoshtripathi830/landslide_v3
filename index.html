@@ -1,0 +1,1356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#eef1ec">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Landslide">
+<title>Landslide Monitor</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="settings-card topbar">
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle dark/light theme">🌙</button>
+    <button class="gear-btn" onclick="toggleSettings()" title="Device address">&#9881;&#65039;</button>
+    <img class="brand-mark" src="icon-192.png" alt="12 Engineer Regiment emblem">
+    <div class="brand-text">
+      <h1 style="margin-bottom:0;">Landslide Monitor</h1>
+      <div class="subtitle" style="margin-bottom:0;">12 Engineer Regiment · Early-Warning Dashboard</div>
+    </div>
+    <div id="settingsPanel">
+      <div class="conn-row">
+        <input id="deviceAddr" type="text" placeholder="landslide.local or 192.168.x.x">
+        <button onclick="saveDevice()">Save</button>
+      </div>
+      <div class="conn-hint">
+        Enter the receiver's address: <b>landslide.local</b>, or its IP shown on the OLED /
+        dashboard. Phone must be on the same WiFi as the receiver (or connected to
+        "Landslide-Setup" and using <b>192.168.4.1</b> if it's still in setup mode).
+      </div>
+    </div>
+  </div>
+
+  <div id="linkBanner" class="link-banner link-down">Connecting...</div>
+
+  <button id="soundToggleBtn" onclick="toggleSound()" style="background:#34495e;">🔊 Phone Siren: ON (tap to mute)</button>
+  <button id="ackBtn" onclick="acknowledgeAlert()" style="background:#c0392b; display:none;">✓ Acknowledge Alert (silence phone siren)</button>
+
+  <div id="statusCard" class="status-card" style="background:#95a5a6;">
+    <div id="statusLevel" class="status-level">--</div>
+    <div id="statusMessage" class="status-message">Waiting for data...</div>
+  </div>
+
+  <div class="alert-strip">
+    <div id="chipLandslide" class="alert-chip chip-landslide">🚨 LANDSLIDE WARNING — GPS shift confirmed by tilt/vibration. Evacuate the area.</div>
+    <div id="chipMoved" class="alert-chip chip-full">📐 FULL ALERT — the box has tilted/rolled from its mounted position.</div>
+    <div id="chipVib" class="alert-chip chip-vib">⚠️ Vibration detected underground — alerting for the next minute.</div>
+    <div id="chipGps" class="alert-chip chip-gps">📡 GPS position drifting beyond the geofence — watching closely.</div>
+    <div id="chipRain" class="alert-chip chip-rain">🌧️ Soil is getting wetter — rain may be softening the ground.</div>
+    <div id="chipSiren" class="alert-chip chip-siren">🔊 Siren sounding</div>
+  </div>
+
+  <div class="mini-grid">
+    <div class="mini-card">
+      <div id="tempValue" class="mini-value">--°</div>
+      <div class="mini-label">Temperature</div>
+    </div>
+    <div class="mini-card">
+      <div id="humValue" class="mini-value">--%</div>
+      <div class="mini-label">Humidity</div>
+    </div>
+    <div class="mini-card">
+      <div id="soilValue" class="mini-value">--%</div>
+      <div class="mini-label">Soil Moisture</div>
+    </div>
+  </div>
+
+  <div class="mini-grid">
+    <div class="mini-card" style="position:relative;">
+      <button class="tile-gear" onclick="toggleTiltSettings()" title="Set tilt threshold">&#9881;&#65039;</button>
+      <div id="tiltValue" class="mini-value">--</div>
+      <div class="mini-label">Tilt</div>
+    </div>
+    <div class="mini-card">
+      <div id="vibValue" class="mini-value">--</div>
+      <div class="mini-label">Vibration</div>
+    </div>
+    <div class="mini-card" style="position:relative;">
+      <button class="tile-gear" onclick="toggleDispSettings()" title="Set displacement radius">&#9881;&#65039;</button>
+      <div id="dispValue" class="mini-value">--</div>
+      <div class="mini-label">Displacement</div>
+    </div>
+  </div>
+
+  <div id="tiltSettingsPanel" class="inline-settings">
+    <div class="conn-row">
+      <input id="tiltThresholdInput" type="number" min="1" max="90" step="0.5" placeholder="tilt alert threshold (degrees)">
+      <button onclick="setTiltThreshold()">Set</button>
+    </div>
+    <div class="conn-hint">Combined pitch+roll change from the calibrated baseline, beyond this many degrees, is flagged "Excessive."</div>
+  </div>
+
+  <div id="dispSettingsPanel" class="inline-settings">
+    <div class="conn-row">
+      <input id="dispRadiusInput" type="number" min="1" max="500" step="0.5" placeholder="displacement radius (meters)">
+      <button onclick="setDispRadius()">Set</button>
+    </div>
+    <div class="conn-hint">GPS movement beyond this many meters from the home point (locked in on first fix) counts as ground displacement. Same setting as the Geofence Radius in Admin View.</div>
+  </div>
+
+  <div id="map"></div>
+  <div class="map-note" id="mapNote">Waiting for GPS fix...</div>
+
+  <button id="adminToggleBtn" onclick="toggleAdmin()">Admin View</button>
+
+  <div id="adminPanel">
+
+    <div class="section-title">Tilt / Orientation (relative to calibrated baseline)</div>
+    <div class="horizon-wrap">
+      <svg id="horizonSvg" viewBox="0 0 200 200" width="200" height="200">
+        <defs>
+          <clipPath id="horizonClip"><circle cx="100" cy="100" r="90"/></clipPath>
+        </defs>
+        <circle cx="100" cy="100" r="92" fill="#222" />
+        <g clip-path="url(#horizonClip)">
+          <g id="horizonGroup">
+            <rect x="-100" y="-300" width="400" height="300" fill="#3a86ff" />
+            <rect x="-100" y="0" width="400" height="300" fill="#8a5a2b" />
+            <line x1="-100" y1="0" x2="300" y2="0" stroke="white" stroke-width="2"/>
+          </g>
+        </g>
+        <circle cx="100" cy="100" r="90" fill="none" stroke="#555" stroke-width="4" />
+        <line x1="60" y1="100" x2="85" y2="100" stroke="#ffd400" stroke-width="4" />
+        <line x1="115" y1="100" x2="140" y2="100" stroke="#ffd400" stroke-width="4" />
+        <polygon points="100,92 108,104 92,104" fill="#ffd400" />
+      </svg>
+      <div class="horizon-labels">
+        <div><span class="mini-label">Pitch</span><div id="a_relpitch" class="mini-value" style="font-size:20px;">--</div></div>
+        <div><span class="mini-label">Roll</span><div id="a_relroll" class="mini-value" style="font-size:20px;">--</div></div>
+      </div>
+    </div>
+    <button id="recalBtn" onclick="recalibrate()" style="background:#3a86ff;">Recalibrate (set current position as level)</button>
+    <table class="admin-table">
+      <tr><td>Raw Pitch / Roll</td><td id="a_pitch">--</td></tr>
+      <tr><td>Baseline Pitch / Roll</td><td id="a_baseline">--</td></tr>
+      <tr><td>Box Moved Alert</td><td id="a_movedalert">--</td></tr>
+      <tr><td>Accel X / Y / Z</td><td id="a_accel">--</td></tr>
+      <tr><td>Gyro X / Y / Z</td><td id="a_gyro">--</td></tr>
+    </table>
+
+    <div class="section-title">Vibration</div>
+    <table class="admin-table">
+      <tr><td>Sensor (now)</td><td id="a_vib">--</td></tr>
+      <tr><td>Vibration Rate Score</td><td id="a_vibrate">--</td></tr>
+      <tr><td>Vibration Alert</td><td id="a_vibalert">--</td></tr>
+    </table>
+
+    <div class="section-title">Ground</div>
+    <table class="admin-table">
+      <tr><td>Soil Moisture (raw ADC)</td><td id="a_soil">--</td></tr>
+      <tr><td>Soil Moisture (%)</td><td id="a_soilpct">--</td></tr>
+      <tr><td>Rainfall Likely</td><td id="a_rain">--</td></tr>
+    </table>
+
+    <div class="section-title">GPS / Ground Movement (Geofence)</div>
+    <table class="admin-table">
+      <tr><td>Fix</td><td id="a_fix">--</td></tr>
+      <tr><td>Lat / Lng</td><td id="a_latlng">--</td></tr>
+      <tr><td>Satellites</td><td id="a_sats">--</td></tr>
+      <tr><td>Home Locked</td><td id="a_home">--</td></tr>
+      <tr><td>Home Coordinates</td><td id="a_homecoords">--</td></tr>
+      <tr><td>Distance From Home</td><td id="a_dist">--</td></tr>
+      <tr><td>Geofence Radius</td><td id="a_geofence">--</td></tr>
+      <tr><td>GPS Drift Alert</td><td id="a_gpsalert">--</td></tr>
+      <tr><td>MPU Verified (Landslide)</td><td id="a_landslide">--</td></tr>
+    </table>
+    <div style="display:flex; gap:8px; margin-bottom:8px;">
+      <input id="geofenceInput" type="number" min="1" max="500" step="0.5" placeholder="radius in meters"
+        style="flex:1; padding:12px; border-radius:10px; border:1px solid #ccc; font-size:14px;">
+      <button style="width:auto; margin-bottom:0; flex:1;" onclick="setGeofence()">Set Geofence</button>
+    </div>
+    <div class="conn-hint" style="margin-bottom:6px;">
+      Moved this unit to a new site? Type the new coordinates below instead of editing any
+      files or re-flashing — takes effect immediately and survives a reboot.
+    </div>
+    <div style="display:flex; gap:8px; margin-bottom:8px;">
+      <input id="homeLatInput" type="number" step="0.000001" placeholder="latitude, e.g. 25.5788"
+        style="flex:1; padding:12px; border-radius:10px; border:1px solid #ccc; font-size:14px;">
+      <input id="homeLngInput" type="number" step="0.000001" placeholder="longitude, e.g. 91.8933"
+        style="flex:1; padding:12px; border-radius:10px; border:1px solid #ccc; font-size:14px;">
+    </div>
+    <div style="display:flex; gap:8px; margin-bottom:20px;">
+      <button style="width:auto; margin-bottom:0; flex:1;" onclick="setHomeLocation()">Set Home Location</button>
+      <button style="width:auto; margin-bottom:0; flex:1; background:#7f8c8d;" onclick="resetHomeLocation()">Use Next GPS Fix Instead</button>
+    </div>
+
+    <div class="section-title">Risk / Prediction Engine</div>
+    <table class="admin-table">
+      <tr><td>Risk Score</td><td id="a_score">--</td></tr>
+      <tr><td>Packets Received</td><td id="a_count">--</td></tr>
+      <tr><td>Checksum Errors</td><td id="a_errs">--</td></tr>
+      <tr><td>Last Packet</td><td id="a_lastpkt">--</td></tr>
+      <tr><td>Network</td><td id="a_wifi">--</td></tr>
+      <tr><td>LED Strip</td><td id="a_led">--</td></tr>
+    </table>
+
+    <div class="section-title">Device Health</div>
+    <table class="admin-table">
+      <tr><td>Uptime</td><td id="a_uptime">--</td></tr>
+      <tr><td>Free Heap Memory</td><td id="a_heap">--</td></tr>
+      <tr><td>WiFi Signal</td><td id="a_rssi">--</td></tr>
+      <tr><td>Packet Error Rate</td><td id="a_errrate">--</td></tr>
+    </table>
+
+    <div class="section-title">Trends &amp; Prediction</div>
+    <div class="settings-card" style="margin-bottom:16px;">
+      <div class="conn-row" style="margin-bottom:10px;">
+        <select id="chartMetric" onchange="renderChart()" style="flex:1; padding:10px; border-radius:10px; border:1px solid #ccc; font-size:14px;">
+          <option value="risk">Risk Score (0-100)</option>
+          <option value="tilt">Tilt (deg, pitch+roll)</option>
+          <option value="vib">Vibration Sensor (raw)</option>
+          <option value="soil">Soil Moisture (%)</option>
+          <option value="dist">Displacement From Home (m)</option>
+          <option value="temp">Temperature (&deg;C)</option>
+          <option value="hum">Humidity (%)</option>
+        </select>
+      </div>
+      <div class="conn-row" style="margin-bottom:10px;">
+        <button type="button" id="rangeLiveBtn" onclick="setChartRange('live')" style="flex:1; margin:0;">Live (session)</button>
+        <button type="button" id="rangeLogBtn" onclick="setChartRange('log')" style="flex:1; margin:0;">Full Log (SD)</button>
+      </div>
+      <canvas id="trendCanvas" width="600" height="220" style="width:100%; height:auto; border-radius:8px; display:block;"></canvas>
+      <div id="chartNote" class="conn-hint" style="margin-top:8px;">Live view: plots data polled since this page was opened.</div>
+      <div id="predictionText" style="margin-top:10px; font-size:13px; font-weight:600; line-height:1.6;">Collecting data...</div>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button type="button" onclick="fetchFullHistory()" id="refreshLogBtn" style="display:none; background:#3a86ff; margin:0; flex:1;">&#8635; Refresh Full Log</button>
+        <button type="button" onclick="exportChartCSV()" style="background:#27ae60; margin:0; flex:1;">&#8681; Export Shown Data (CSV)</button>
+      </div>
+    </div>
+
+    <div class="section-title">Session Stats (since page opened)</div>
+    <table class="admin-table">
+      <tr><td>Risk Score (max)</td><td id="s_riskmax">--</td></tr>
+      <tr><td>Tilt (max)</td><td id="s_tiltmax">--</td></tr>
+      <tr><td>Displacement (max)</td><td id="s_distmax">--</td></tr>
+      <tr><td>Soil Moisture (min / avg / max)</td><td id="s_soil">--</td></tr>
+      <tr><td>Temperature (min / avg / max)</td><td id="s_temp">--</td></tr>
+      <tr><td>Humidity (min / avg / max)</td><td id="s_hum">--</td></tr>
+    </table>
+
+    <div class="section-title">SD Card Logger</div>
+    <table class="admin-table">
+      <tr><td>Card Status</td><td id="a_sdstatus">--</td></tr>
+      <tr><td>Rows Logged</td><td id="a_sdrows">--</td></tr>
+    </table>
+    <button style="background:#3a86ff;" onclick="downloadLog()">Download Log (CSV)</button>
+
+    <div class="section-title">Event Log</div>
+    <div id="eventLogList"><div class="event-row"><span>No events yet</span></div></div>
+
+    <button id="resetWifiBtn" onclick="resetWifi()">Reset WiFi (back to setup mode)</button>
+
+  </div>
+
+  <button onclick="toggleRules()">Custom Alert Rules</button>
+
+  <div id="rulesPanel">
+    <button onclick="requestNotifyPermission()" style="background:#3a86ff;">🔔 Enable Phone Notifications</button>
+    <div class="conn-hint" style="margin:-14px 0 16px;">
+      Build your own logic entirely from this page - e.g. "Vibration Alert is true AND Tilt &gt; 5° AND
+      Displacement &gt; 3 m" → play a tone, show a notification, vibrate, or send a webhook. Rules run
+      on your phone against the live data, so they work even without re-flashing the receiver. Each rule
+      fires once when it becomes true, and can fire again after it clears and re-triggers.
+    </div>
+
+    <div id="rulesList"></div>
+
+    <div class="section-title" id="builderTitle">Add New Rule</div>
+    <div class="rule-builder">
+      <div class="conn-row">
+        <input id="ruleName" type="text" placeholder="Rule name (e.g. Heavy Rain Risk)">
+      </div>
+      <div class="conn-row">
+        <select id="ruleLogic" style="flex:1; padding:12px; border-radius:10px; border:1px solid #ccc; font-size:14px;">
+          <option value="AND">Match ALL conditions (AND)</option>
+          <option value="OR">Match ANY condition (OR)</option>
+        </select>
+      </div>
+
+      <div class="section-title" style="margin-top:10px;">Conditions</div>
+      <div id="conditionRows"></div>
+      <button type="button" onclick="addConditionRow()" style="background:#7f8c8d;">+ Add Condition</button>
+
+      <div class="section-title" style="margin-top:10px;">Actions</div>
+      <div id="actionRows"></div>
+      <button type="button" onclick="addActionRow()" style="background:#7f8c8d;">+ Add Action</button>
+
+      <button onclick="saveRuleFromBuilder()" style="background:#27ae60;">Save Rule</button>
+      <button type="button" onclick="clearBuilder()" style="background:#95a5a6;">Clear / Cancel Edit</button>
+    </div>
+
+    <div class="section-title">Rule Activity Log</div>
+    <div id="ruleLogList"><div class="event-row"><span>No rule activity yet</span></div></div>
+  </div>
+
+  <div class="footer">Landslide Early-Warning System</div>
+  <div style="text-align:center;"><a href="#" id="installAppLink" class="install-link">&#8681; Add to Home Screen</a></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+// ---------------- Theme (dark/light) ----------------
+// Manual choice wins if the person has picked one before; otherwise follow
+// the phone/browser's system preference. Applied immediately (before other
+// init) so nothing flashes in the wrong theme and the chart canvas below
+// picks up the right colors on its very first draw.
+const THEME_KEY = 'yaksha_theme';
+function applyTheme(mode) {
+  document.body.classList.toggle('dark-theme', mode === 'dark');
+  document.getElementById('themeBtn').textContent = mode === 'dark' ? '☀️' : '🌙';
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', mode === 'dark' ? '#12181f' : '#eef1ec');
+}
+function currentTheme() {
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved === 'dark' || saved === 'light') return saved;
+  return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+}
+function toggleTheme() {
+  const next = document.body.classList.contains('dark-theme') ? 'light' : 'dark';
+  localStorage.setItem(THEME_KEY, next);
+  applyTheme(next);
+  if (typeof adminOpen !== 'undefined' && adminOpen) renderChart();
+}
+applyTheme(currentTheme());
+
+// ---------------- Device address (persisted so you don't retype it) ----------------
+let deviceAddr = localStorage.getItem('yaksha_device_addr') || 'landslide.local';
+document.getElementById('deviceAddr').value = deviceAddr;
+function base() { return 'http://' + deviceAddr; }
+
+function saveDevice() {
+  const v = document.getElementById('deviceAddr').value.trim();
+  if (!v) return;
+  deviceAddr = v.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  localStorage.setItem('yaksha_device_addr', deviceAddr);
+  toggleSettings();
+  refresh();
+}
+let settingsOpen = false;
+function toggleSettings() {
+  settingsOpen = !settingsOpen;
+  document.getElementById('settingsPanel').style.display = settingsOpen ? 'block' : 'none';
+}
+if (!localStorage.getItem('yaksha_device_addr')) { settingsOpen = true; document.getElementById('settingsPanel').style.display = 'block'; }
+
+// ---------------- Phone siren ----------------
+// You have no physical buzzer, so THIS is the siren - real audio playing from
+// the phone's speaker, driven by the receiver's live alert flags. Three
+// different siren characters, same priority the firmware would have used:
+//   landslide (confirmed)  -> loud continuous hi-lo two-tone wail
+//   box moved/tilt         -> fast rising/falling wail
+//   vibration              -> quicker double-chirp with a pause
+let audioCtx = null, oscillator = null, gainNode = null;
+let soundEnabled = localStorage.getItem('yaksha_sound_enabled') !== '0'; // ON by default
+let sirenTimer = null;
+let currentPattern = 'none';
+let acknowledgedPattern = 'none';
+
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  gainNode = audioCtx.createGain();
+  gainNode.gain.value = 0;
+  oscillator = audioCtx.createOscillator();
+  oscillator.type = 'sawtooth';   // harsher/more "siren" than a plain sine
+  oscillator.frequency.value = 800;
+  oscillator.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+  oscillator.start();
+}
+
+// Phones/browsers block audio until a real tap happens somewhere on the page.
+// Unlock on the FIRST tap/click anywhere - not just the siren button - so it's
+// armed as soon as you open the app and touch it at all.
+function unlockAudioOnce() {
+  if (!soundEnabled) return;
+  initAudio();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+document.addEventListener('touchstart', unlockAudioOnce, { once: true, passive: true });
+document.addEventListener('click', unlockAudioOnce, { once: true });
+
+function updateSoundBtn() {
+  const b = document.getElementById('soundToggleBtn');
+  b.textContent = soundEnabled ? '\uD83D\uDD0A Phone Siren: ON (tap to mute)' : '\uD83D\uDD07 Phone Siren: OFF (tap to enable)';
+}
+
+function toggleSound() {
+  if (!soundEnabled) {
+    soundEnabled = true;
+    localStorage.setItem('yaksha_sound_enabled', '1');
+    initAudio();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } else {
+    soundEnabled = false;
+    localStorage.setItem('yaksha_sound_enabled', '0');
+    setPattern('none');
+  }
+  updateSoundBtn();
+}
+updateSoundBtn();
+if (soundEnabled) { initAudio(); } // context exists immediately; still needs one real tap/click to actually unmute on most phones
+
+// Smoothly glide the oscillator's pitch to a new frequency over `dur` seconds
+// - this is what makes it sound like a real siren instead of a video-game blip.
+function glideTo(freq, dur) {
+  const t = audioCtx.currentTime;
+  oscillator.frequency.cancelScheduledValues(t);
+  oscillator.frequency.setValueAtTime(oscillator.frequency.value, t);
+  oscillator.frequency.linearRampToValueAtTime(freq, t + dur);
+}
+
+function setPattern(pattern) {
+  if (pattern === currentPattern) return;
+  currentPattern = pattern;
+  if (sirenTimer) { clearInterval(sirenTimer); sirenTimer = null; }
+  if (!soundEnabled || !audioCtx || pattern === 'none') {
+    if (gainNode) gainNode.gain.setTargetAtTime(0, audioCtx ? audioCtx.currentTime : 0, 0.05);
+    return;
+  }
+
+  if (pattern === 'landslide') {
+    // Loud continuous hi-lo two-tone wail (classic ambulance-style siren)
+    gainNode.gain.setTargetAtTime(0.35, audioCtx.currentTime, 0.05);
+    let hi = true;
+    glideTo(hi ? 1300 : 750, 0.5);
+    sirenTimer = setInterval(() => {
+      hi = !hi;
+      glideTo(hi ? 1300 : 750, 0.5);
+    }, 550);
+
+  } else if (pattern === 'moved') {
+    // Fast rising/falling wail - urgent, but a notch below the landslide tone
+    gainNode.gain.setTargetAtTime(0.3, audioCtx.currentTime, 0.05);
+    let up = true;
+    glideTo(up ? 1450 : 550, 0.22);
+    sirenTimer = setInterval(() => {
+      up = !up;
+      glideTo(up ? 1450 : 550, 0.22);
+    }, 240);
+
+  } else if (pattern === 'vib') {
+    // Quicker double-chirp, then a pause - the least urgent of the three
+    oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime);
+    let step = 0;
+    sirenTimer = setInterval(() => {
+      const on = (step % 5) < 2; // chirp, chirp, pause, pause, pause
+      gainNode.gain.setTargetAtTime(on ? 0.3 : 0, audioCtx.currentTime, 0.01);
+      step++;
+    }, 160);
+  }
+}
+
+function acknowledgeAlert() {
+  acknowledgedPattern = currentPattern;
+  setPattern('none');
+  document.getElementById('ackBtn').style.display = 'none';
+}
+
+// Decides which phone-siren pattern should be playing based on the latest /data,
+// same priority the firmware itself uses for its own buzzer.
+function updateSirenFromData(d) {
+  let wanted = 'none';
+  if (d.landslideWarning) wanted = 'landslide';
+  else if (d.boxMovedAlert) wanted = 'moved';
+  else if (d.vibrationAlert) wanted = 'vib';
+
+  if (wanted === 'none') {
+    acknowledgedPattern = 'none';
+    document.getElementById('ackBtn').style.display = 'none';
+    setPattern('none');
+    return;
+  }
+
+  if (wanted !== acknowledgedPattern) {
+    setPattern(wanted);
+    document.getElementById('ackBtn').style.display = 'block';
+  } else {
+    setPattern('none'); // stays acknowledged/silenced until it clears or escalates
+  }
+
+  if (navigator.vibrate) {
+    if (wanted === 'landslide') navigator.vibrate([300, 100, 300, 100, 300]);
+    else if (wanted === 'moved') navigator.vibrate([200, 100, 200]);
+    else if (wanted === 'vib') navigator.vibrate([120, 80, 120]);
+  }
+}
+
+// ==================== CUSTOM ALERT RULES ====================
+// Fully page-configurable "if this + this + this -> do this" logic engine.
+// Runs entirely on your phone against the live /data feed - no re-flashing
+// needed to add/change a rule. Persisted in this browser via localStorage.
+
+const RULE_METRICS = [
+  { key: 'vibrationAlert',    label: 'Vibration Alert',                    type: 'bool' },
+  { key: 'vibRateScore',      label: 'Vibration Rate Score (0-100)',       type: 'number' },
+  { key: 'boxMovedAlert',     label: 'Tilt Alert (Excessive)',             type: 'bool' },
+  { key: 'tiltDeg',           label: 'Tilt, combined pitch+roll (degrees)',type: 'number' },
+  { key: 'gpsDriftAlert',     label: 'GPS Drift Alert',                    type: 'bool' },
+  { key: 'distanceFromHome',  label: 'Displacement From Home (meters)',    type: 'number' },
+  { key: 'landslideWarning',  label: 'Landslide Warning (confirmed)',      type: 'bool' },
+  { key: 'rainfallLikely',    label: 'Rainfall Likely',                    type: 'bool' },
+  { key: 'soilPercent',       label: 'Soil Moisture (%)',                  type: 'number' },
+  { key: 'temperature',       label: 'Temperature (\u00b0C)',              type: 'number' },
+  { key: 'humidity',          label: 'Humidity (%)',                       type: 'number' },
+  { key: 'riskScore',         label: 'Overall Risk Score (0-100)',         type: 'number' },
+];
+const RULE_ACTION_TYPES = [
+  { key: 'tone',    label: 'Play Phone Alert Tone' },
+  { key: 'notify',  label: 'Show Phone Notification' },
+  { key: 'vibrate', label: 'Vibrate Phone' },
+  { key: 'webhook', label: 'Send Webhook (Telegram/Discord/IFTTT/etc.)' },
+  { key: 'log',     label: 'Log Only (no sound/notification)' },
+];
+
+function metricType(key) {
+  const m = RULE_METRICS.find(m => m.key === key);
+  return m ? m.type : 'number';
+}
+
+let customRules = [];
+try { customRules = JSON.parse(localStorage.getItem('yaksha_custom_rules') || '[]'); } catch (e) { customRules = []; }
+let ruleActiveState = {};
+let editingRuleId = null;
+let ruleLog = [];
+try { ruleLog = JSON.parse(localStorage.getItem('yaksha_rule_log') || '[]'); } catch (e) { ruleLog = []; }
+let rowCounter = 0;
+
+function saveRulesToStorage() { localStorage.setItem('yaksha_custom_rules', JSON.stringify(customRules)); }
+function saveLogToStorage() { localStorage.setItem('yaksha_rule_log', JSON.stringify(ruleLog.slice(-50))); }
+
+let rulesOpen = false;
+function toggleRules() {
+  rulesOpen = !rulesOpen;
+  document.getElementById('rulesPanel').classList.toggle('open', rulesOpen);
+  if (rulesOpen) { renderRulesList(); renderRuleLog(); }
+}
+
+function requestNotifyPermission() {
+  if (!('Notification' in window)) { alert('This browser does not support notifications.'); return; }
+  Notification.requestPermission().then(perm => {
+    alert(perm === 'granted' ? 'Notifications enabled.' : 'Notifications not enabled (' + perm + ').');
+  });
+}
+
+// ---- Condition row builder ----
+function addConditionRow(prefill) {
+  const id = 'cond_' + (rowCounter++);
+  const div = document.createElement('div');
+  div.className = 'rule-row';
+  div.id = id;
+  const metricOptions = RULE_METRICS.map(m => `<option value="${m.key}">${m.label}</option>`).join('');
+  div.innerHTML = `
+    <select class="cond-metric">${metricOptions}</select>
+    <select class="cond-op">
+      <option value=">">&gt;</option><option value=">=">&ge;</option>
+      <option value="<">&lt;</option><option value="<=">&le;</option>
+      <option value="==">=</option><option value="!=">&ne;</option>
+    </select>
+    <input class="cond-val" type="text" placeholder="value (e.g. 5, or true/false)">
+    <button type="button" class="remove-row" onclick="document.getElementById('${id}').remove()">Remove</button>
+  `;
+  document.getElementById('conditionRows').appendChild(div);
+  if (prefill) {
+    div.querySelector('.cond-metric').value = prefill.metric;
+    div.querySelector('.cond-op').value = prefill.operator;
+    div.querySelector('.cond-val').value = prefill.value;
+  }
+}
+
+// ---- Action row builder ----
+function actionExtraFieldsHtml(type, prefillParams) {
+  prefillParams = prefillParams || {};
+  if (type === 'tone') {
+    return `<input class="act-freq" type="number" min="200" max="3000" placeholder="tone frequency Hz (default 1000)" value="${prefillParams.freq || ''}">
+            <input class="act-beeps" type="number" min="1" max="10" placeholder="number of beeps (default 3)" value="${prefillParams.beeps || ''}">`;
+  }
+  if (type === 'notify') {
+    return `<input class="act-msg" type="text" placeholder="notification message" value="${(prefillParams.message || '').replace(/"/g,'&quot;')}">`;
+  }
+  if (type === 'webhook') {
+    return `<input class="act-url" type="text" placeholder="webhook URL" value="${(prefillParams.url || '').replace(/"/g,'&quot;')}">
+            <input class="act-msg" type="text" placeholder="message (optional)" value="${(prefillParams.message || '').replace(/"/g,'&quot;')}">`;
+  }
+  return '';
+}
+
+function updateActionRowFields(selectEl) {
+  const row = selectEl.closest('.rule-row');
+  const extra = row.querySelector('.act-extra');
+  extra.innerHTML = actionExtraFieldsHtml(selectEl.value);
+}
+
+function addActionRow(prefill) {
+  const id = 'act_' + (rowCounter++);
+  const div = document.createElement('div');
+  div.className = 'rule-row';
+  div.id = id;
+  const typeOptions = RULE_ACTION_TYPES.map(a => `<option value="${a.key}">${a.label}</option>`).join('');
+  div.innerHTML = `
+    <select class="act-type" onchange="updateActionRowFields(this)">${typeOptions}</select>
+    <span class="act-extra" style="display:flex; gap:6px; flex:2; flex-wrap:wrap;"></span>
+    <button type="button" class="remove-row" onclick="document.getElementById('${id}').remove()">Remove</button>
+  `;
+  document.getElementById('actionRows').appendChild(div);
+  const typeSel = div.querySelector('.act-type');
+  if (prefill) typeSel.value = prefill.type;
+  div.querySelector('.act-extra').innerHTML = actionExtraFieldsHtml(typeSel.value, prefill ? prefill.params : {});
+}
+
+function clearBuilder() {
+  document.getElementById('ruleName').value = '';
+  document.getElementById('ruleLogic').value = 'AND';
+  document.getElementById('conditionRows').innerHTML = '';
+  document.getElementById('actionRows').innerHTML = '';
+  editingRuleId = null;
+  document.getElementById('builderTitle').textContent = 'Add New Rule';
+  addConditionRow();
+  addActionRow();
+}
+
+function loadRuleIntoBuilder(rule) {
+  document.getElementById('ruleName').value = rule.name;
+  document.getElementById('ruleLogic').value = rule.logic;
+  document.getElementById('conditionRows').innerHTML = '';
+  document.getElementById('actionRows').innerHTML = '';
+  rule.conditions.forEach(c => addConditionRow(c));
+  rule.actions.forEach(a => addActionRow(a));
+  editingRuleId = rule.id;
+  document.getElementById('builderTitle').textContent = 'Editing: ' + rule.name;
+  document.getElementById('rulesPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function saveRuleFromBuilder() {
+  const name = document.getElementById('ruleName').value.trim();
+  if (!name) { alert('Give the rule a name.'); return; }
+  const logic = document.getElementById('ruleLogic').value;
+
+  const conditions = Array.from(document.querySelectorAll('#conditionRows .rule-row')).map(row => ({
+    metric: row.querySelector('.cond-metric').value,
+    operator: row.querySelector('.cond-op').value,
+    value: row.querySelector('.cond-val').value.trim()
+  })).filter(c => c.value !== '');
+  if (conditions.length === 0) { alert('Add at least one condition.'); return; }
+
+  const actions = Array.from(document.querySelectorAll('#actionRows .rule-row')).map(row => {
+    const type = row.querySelector('.act-type').value;
+    const params = {};
+    if (type === 'tone') {
+      params.freq = parseFloat(row.querySelector('.act-freq')?.value) || 1000;
+      params.beeps = parseInt(row.querySelector('.act-beeps')?.value) || 3;
+    } else if (type === 'notify') {
+      params.message = row.querySelector('.act-msg')?.value || (name + ' triggered');
+    } else if (type === 'webhook') {
+      params.url = row.querySelector('.act-url')?.value || '';
+      params.message = row.querySelector('.act-msg')?.value || '';
+    }
+    return { type, params };
+  });
+  if (actions.length === 0) { alert('Add at least one action.'); return; }
+
+  if (editingRuleId) {
+    const idx = customRules.findIndex(r => r.id === editingRuleId);
+    if (idx >= 0) {
+      customRules[idx] = { ...customRules[idx], name, logic, conditions, actions };
+    }
+  } else {
+    customRules.push({ id: 'rule_' + Date.now(), name, logic, conditions, actions, enabled: true });
+  }
+  saveRulesToStorage();
+  clearBuilder();
+  renderRulesList();
+}
+
+function deleteRule(id) {
+  if (!confirm('Delete this rule?')) return;
+  customRules = customRules.filter(r => r.id !== id);
+  delete ruleActiveState[id];
+  saveRulesToStorage();
+  renderRulesList();
+}
+
+function toggleRuleEnabled(id) {
+  const rule = customRules.find(r => r.id === id);
+  if (!rule) return;
+  rule.enabled = !rule.enabled;
+  saveRulesToStorage();
+  renderRulesList();
+}
+
+function conditionSummary(c) {
+  const m = RULE_METRICS.find(m => m.key === c.metric);
+  return (m ? m.label : c.metric) + ' ' + c.operator + ' ' + c.value;
+}
+function actionSummary(a) {
+  const t = RULE_ACTION_TYPES.find(t => t.key === a.type);
+  return t ? t.label : a.type;
+}
+
+function renderRulesList() {
+  const container = document.getElementById('rulesList');
+  if (customRules.length === 0) {
+    container.innerHTML = '<div class="conn-hint">No custom rules yet - build one below.</div>';
+    return;
+  }
+  container.innerHTML = customRules.map(r => `
+    <div class="rule-card">
+      <div class="rule-card-head">
+        <div class="rule-card-title">${r.name}</div>
+        <button class="rule-toggle ${r.enabled ? '' : 'off'}" onclick="toggleRuleEnabled('${r.id}')">${r.enabled ? 'ON' : 'OFF'}</button>
+      </div>
+      <div class="rule-card-summary">
+        ${r.conditions.map(conditionSummary).join(r.logic === 'AND' ? ' <b>AND</b> ' : ' <b>OR</b> ')}<br>
+        &rarr; ${r.actions.map(actionSummary).join(', ')}
+      </div>
+      <div class="rule-card-actions">
+        <button onclick='loadRuleIntoBuilder(${JSON.stringify(r).replace(/'/g, "&apos;")})' style="background:#3a86ff;">Edit</button>
+        <button onclick="deleteRule('${r.id}')" style="background:#c0392b;">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderRuleLog() {
+  const el = document.getElementById('ruleLogList');
+  if (!ruleLog.length) { el.innerHTML = '<div class="event-row"><span>No rule activity yet</span></div>'; return; }
+  el.innerHTML = ruleLog.slice().reverse().map(e =>
+    `<div class="event-row"><span>${e.time}</span><span>${e.text}</span></div>`
+  ).join('');
+}
+
+function logRuleEvent(rule, matched) {
+  ruleLog.push({ time: new Date().toLocaleTimeString(), text: rule.name + (matched ? ' \u2192 triggered' : ' \u2192 cleared') });
+  saveLogToStorage();
+  if (document.getElementById('rulesPanel').classList.contains('open')) renderRuleLog();
+}
+
+// One-shot alert tone using its own throwaway oscillator, so it never
+// conflicts with the continuous built-in siren engine above.
+function playAlertTone(freq, beeps) {
+  if (!soundEnabled) return;
+  initAudio();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  let i = 0;
+  const beepMs = 150, gapMs = 110;
+  (function beep() {
+    if (i >= beeps) return;
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    g.gain.value = 0.3;
+    osc.connect(g); g.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + beepMs / 1000);
+    i++;
+    setTimeout(beep, beepMs + gapMs);
+  })();
+}
+
+function fireRuleActions(rule, d) {
+  rule.actions.forEach(a => {
+    if (a.type === 'tone') {
+      playAlertTone(a.params.freq || 1000, a.params.beeps || 3);
+    } else if (a.type === 'notify') {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(rule.name, { body: a.params.message || (rule.name + ' triggered'), icon: 'icon-192.png' });
+      }
+    } else if (a.type === 'vibrate') {
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+    } else if (a.type === 'webhook') {
+      if (a.params.url) {
+        fetch(a.params.url, {
+          method: 'POST', mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rule: rule.name, message: a.params.message || '', data: d })
+        }).catch(() => {});
+      }
+    }
+    // 'log' action needs no extra work - logRuleEvent() below covers it for every rule
+  });
+}
+
+function evalCondition(d, c) {
+  const raw = d[c.metric];
+  if (raw === undefined) return false;
+  if (metricType(c.metric) === 'bool') {
+    const left = !!raw;
+    const right = String(c.value).trim().toLowerCase() === 'true';
+    return c.operator === '!=' ? left !== right : left === right;
+  }
+  const left = parseFloat(raw);
+  const right = parseFloat(c.value);
+  if (isNaN(left) || isNaN(right)) return false;
+  switch (c.operator) {
+    case '>': return left > right;
+    case '>=': return left >= right;
+    case '<': return left < right;
+    case '<=': return left <= right;
+    case '==': return left === right;
+    case '!=': return left !== right;
+    default: return false;
+  }
+}
+
+function evaluateCustomRules(rawData) {
+  const d = { ...rawData, tiltDeg: Math.abs(rawData.relPitch) + Math.abs(rawData.relRoll) };
+  customRules.forEach(rule => {
+    if (!rule.enabled) { ruleActiveState[rule.id] = false; return; }
+    const results = rule.conditions.map(c => evalCondition(d, c));
+    const matched = rule.logic === 'OR' ? results.some(Boolean) : results.every(Boolean);
+    const wasActive = !!ruleActiveState[rule.id];
+    if (matched && !wasActive) {
+      fireRuleActions(rule, d);
+      logRuleEvent(rule, true);
+    } else if (!matched && wasActive) {
+      logRuleEvent(rule, false);
+    }
+    ruleActiveState[rule.id] = matched;
+  });
+}
+
+// Seed the builder with one empty condition/action row on first load
+addConditionRow();
+addActionRow();
+renderRulesList();
+
+// ==================== TRENDS, PREDICTION & DEVICE HEALTH ====================
+// Everything here runs on your phone against data already being polled (live
+// session) or pulled once on request from the receiver's own SD log (full
+// history) - no external services, same offline-first philosophy as the rest
+// of this app.
+const CHART_METRICS = {
+  risk: { label: 'Risk Score',              unit: '',    color: '#c0392b', fixedMin: 0, fixedMax: 100 },
+  tilt: { label: 'Tilt (pitch+roll)',        unit: '\u00b0', color: '#a5610a', fixedMin: 0, fixedMax: null },
+  vib:  { label: 'Vibration Sensor (raw)',   unit: '',    color: '#8e44ad', fixedMin: 0, fixedMax: null },
+  soil: { label: 'Soil Moisture',            unit: '%',   color: '#1a5fa8', fixedMin: 0, fixedMax: 100 },
+  dist: { label: 'Displacement From Home',   unit: 'm',   color: '#16a085', fixedMin: 0, fixedMax: null },
+  temp: { label: 'Temperature',              unit: '\u00b0C', color: '#e67e22', fixedMin: null, fixedMax: null },
+  hum:  { label: 'Humidity',                 unit: '%',   color: '#2980b9', fixedMin: 0, fixedMax: 100 },
+};
+
+const LIVE_BUFFER_MAX = 900;   // ~15 min of history at the 1s poll rate
+let liveBuffer = [];
+let fullHistoryBuffer = [];
+let chartRange = 'live';
+let lastGeofenceRadius = null, lastTiltThreshold = null;
+
+function recordHistoryPoint(d) {
+  liveBuffer.push({
+    t: d.rtcEpoch || Math.floor(Date.now() / 1000),
+    risk: d.riskScore,
+    tilt: Math.abs(d.relPitch) + Math.abs(d.relRoll),
+    vib: d.vib1,
+    soil: d.soilPercent,
+    temp: d.temperature,
+    hum: d.humidity,
+    dist: d.distanceFromHome
+  });
+  if (liveBuffer.length > LIVE_BUFFER_MAX) liveBuffer.shift();
+  lastGeofenceRadius = d.geofenceRadius;
+  lastTiltThreshold = d.tiltThreshold;
+}
+
+function updateDeviceHealth(d) {
+  if (d.uptimeSec === undefined) return; // older firmware without these fields - skip quietly
+  const upH = Math.floor(d.uptimeSec / 3600), upM = Math.floor((d.uptimeSec % 3600) / 60);
+  document.getElementById('a_uptime').textContent = upH + 'h ' + upM + 'm';
+  document.getElementById('a_heap').textContent = (d.freeHeap / 1024).toFixed(0) + ' KB free';
+  const rssi = d.wifiRSSI;
+  const rssiLabel = rssi >= -60 ? 'Strong' : rssi >= -75 ? 'OK' : 'Weak';
+  document.getElementById('a_rssi').textContent = rssi + ' dBm (' + rssiLabel + ')';
+  const totalPkts = d.packetCount + d.checksumErrors;
+  const errRate = totalPkts > 0 ? (d.checksumErrors / totalPkts * 100) : 0;
+  document.getElementById('a_errrate').textContent = errRate.toFixed(2) + '% (' + d.checksumErrors + ' of ' + totalPkts + ')';
+}
+
+function updateSessionStats() {
+  if (liveBuffer.length === 0) return;
+  const vals = key => liveBuffer.map(p => p[key]).filter(v => v !== undefined && v !== null && !isNaN(v));
+  const stat = (key, digits) => {
+    const a = vals(key);
+    if (!a.length) return '--';
+    const mn = Math.min(...a), mx = Math.max(...a), av = a.reduce((s,v)=>s+v,0)/a.length;
+    return mn.toFixed(digits) + ' / ' + av.toFixed(digits) + ' / ' + mx.toFixed(digits);
+  };
+  const riskVals = vals('risk'), tiltVals = vals('tilt'), distVals = vals('dist');
+  if (riskVals.length) document.getElementById('s_riskmax').textContent = Math.max(...riskVals).toFixed(0);
+  if (tiltVals.length) document.getElementById('s_tiltmax').textContent = Math.max(...tiltVals).toFixed(1) + '\u00b0';
+  if (distVals.length) document.getElementById('s_distmax').textContent = Math.max(...distVals).toFixed(1) + ' m';
+  document.getElementById('s_soil').textContent = stat('soil', 0) + ' %';
+  document.getElementById('s_temp').textContent = stat('temp', 1) + ' \u00b0C';
+  document.getElementById('s_hum').textContent = stat('hum', 0) + ' %';
+}
+
+function setChartRange(mode) {
+  chartRange = mode;
+  document.getElementById('rangeLiveBtn').style.background = mode === 'live' ? '#34495e' : '#95a5a6';
+  document.getElementById('rangeLogBtn').style.background = mode === 'log' ? '#34495e' : '#95a5a6';
+  document.getElementById('refreshLogBtn').style.display = mode === 'log' ? 'block' : 'none';
+  document.getElementById('chartNote').textContent = mode === 'live'
+    ? 'Live view: plots data polled since this page was opened.'
+    : 'Full log view: pulled from the receiver\u2019s SD card \u2014 shows history beyond this session. Tap Refresh to update.';
+  if (mode === 'log' && fullHistoryBuffer.length === 0) fetchFullHistory();
+  else renderChart();
+}
+
+function fetchFullHistory() {
+  document.getElementById('chartNote').textContent = 'Loading full log from receiver...';
+  fetch(base() + '/history?n=200').then(r => r.json()).then(j => {
+    fullHistoryBuffer = (j.rows || []).map(r => ({
+      t: r.t, risk: r.risk, tilt: r.tilt, vib: r.vib, soil: r.soil, temp: r.temp, hum: r.hum, dist: r.dist
+    }));
+    document.getElementById('chartNote').textContent = j.note ? j.note :
+      'Full log view: ' + fullHistoryBuffer.length + ' rows from the SD card. Tap Refresh to update.';
+    renderChart();
+  }).catch(() => {
+    document.getElementById('chartNote').textContent = 'Could not load the SD log from the device.';
+  });
+}
+
+function currentDataset() {
+  return chartRange === 'live' ? liveBuffer : fullHistoryBuffer;
+}
+
+// Plain least-squares linear regression against time (seconds from the first
+// point in the shown dataset). This is a simple trend line, not a certified
+// forecasting model - it's meant as an early indicator alongside the actual
+// sensor alerts, not a replacement for them.
+function linearTrend(dataset, key) {
+  const pts = dataset.filter(p => p[key] !== undefined && p[key] !== null && !isNaN(p[key]));
+  if (pts.length < 5) return null;
+  const t0 = pts[0].t;
+  const xs = pts.map(p => (p.t - t0));
+  const ys = pts.map(p => p[key]);
+  const n = xs.length;
+  const sumX = xs.reduce((a,b) => a+b, 0), sumY = ys.reduce((a,b) => a+b, 0);
+  const sumXY = xs.reduce((s,x,i) => s + x*ys[i], 0), sumXX = xs.reduce((s,x) => s + x*x, 0);
+  const denom = (n*sumXX - sumX*sumX);
+  if (Math.abs(denom) < 1e-9) return null;
+  const slope = (n*sumXY - sumX*sumY) / denom;   // value per second
+  return { slopePerHour: slope * 3600, lastY: ys[n-1] };
+}
+
+function formatHours(h) {
+  if (h < 1) return Math.round(h * 60) + ' min';
+  if (h < 48) return h.toFixed(1) + ' hr';
+  return (h / 24).toFixed(1) + ' days';
+}
+
+function updatePrediction(dataset, metricKey) {
+  const el = document.getElementById('predictionText');
+  const trend = linearTrend(dataset, metricKey);
+  if (!trend) { el.textContent = 'Not enough data yet to estimate a trend.'; return; }
+  const m = CHART_METRICS[metricKey];
+  const dir = Math.abs(trend.slopePerHour) < 0.01 ? 'steady \u2192' : (trend.slopePerHour > 0 ? 'rising \u2191' : 'falling \u2193');
+  let msg = m.label + ' is ' + dir + ' (' + (trend.slopePerHour >= 0 ? '+' : '') + trend.slopePerHour.toFixed(2) + m.unit + '/hr).';
+
+  let threshold = null;
+  if (metricKey === 'risk') threshold = trend.lastY < 75 ? 75 : (trend.lastY < 100 ? 100 : null);
+  else if (metricKey === 'tilt' && lastTiltThreshold) threshold = trend.lastY < lastTiltThreshold ? lastTiltThreshold : null;
+  else if (metricKey === 'dist' && lastGeofenceRadius) threshold = trend.lastY < lastGeofenceRadius ? lastGeofenceRadius : null;
+
+  if (threshold !== null && trend.slopePerHour > 0.001) {
+    const etaHours = (threshold - trend.lastY) / trend.slopePerHour;
+    if (etaHours > 0 && etaHours < 24 * 30) {
+      msg += ' At this rate, projected to reach ' + threshold + m.unit + ' in about ' + formatHours(etaHours) + '.';
+    }
+  }
+  msg += ' (Simple linear trend from the data shown \u2014 not a guaranteed forecast; watch the actual alerts too.)';
+  el.textContent = msg;
+}
+
+function renderChart() {
+  const metricKey = document.getElementById('chartMetric').value;
+  const dataset = currentDataset();
+  const canvas = document.getElementById('trendCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Pull current theme colors so the chart matches light/dark mode instead
+  // of staying hardcoded to the light palette.
+  const themeStyles = getComputedStyle(document.body);
+  const gridColor = themeStyles.getPropertyValue('--border').trim() || '#eee';
+  const labelColor = themeStyles.getPropertyValue('--ink-soft').trim() || '#999';
+
+  updatePrediction(dataset, metricKey);
+  updateSessionStats();
+
+  const m = CHART_METRICS[metricKey];
+  const pts = dataset.filter(p => p[metricKey] !== undefined && p[metricKey] !== null && !isNaN(p[metricKey]));
+  if (pts.length < 2) {
+    ctx.fillStyle = labelColor; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Collecting data...', W/2, H/2);
+    return;
+  }
+
+  const values = pts.map(p => p[metricKey]);
+  let vMin = m.fixedMin !== null ? m.fixedMin : Math.min(...values);
+  let vMax = m.fixedMax !== null ? m.fixedMax : Math.max(...values);
+  if (vMax - vMin < 1) vMax = vMin + 1;
+  const pad = 28;
+  const xFor = i => pad + (i / (pts.length - 1)) * (W - pad * 2);
+  const yFor = v => H - pad - ((v - vMin) / (vMax - vMin)) * (H - pad * 2);
+
+  ctx.strokeStyle = gridColor; ctx.lineWidth = 1;
+  for (let g = 0; g <= 4; g++) {
+    const gy = pad + g * (H - pad * 2) / 4;
+    ctx.beginPath(); ctx.moveTo(pad, gy); ctx.lineTo(W - pad, gy); ctx.stroke();
+  }
+  ctx.fillStyle = labelColor; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText(vMax.toFixed(0) + m.unit, pad - 4, pad + 3);
+  ctx.fillText(vMin.toFixed(0) + m.unit, pad - 4, H - pad + 3);
+
+  let threshLine = null;
+  if (metricKey === 'risk') threshLine = 75;
+  else if (metricKey === 'tilt' && lastTiltThreshold) threshLine = lastTiltThreshold;
+  else if (metricKey === 'dist' && lastGeofenceRadius) threshLine = lastGeofenceRadius;
+  if (threshLine !== null && threshLine >= vMin && threshLine <= vMax) {
+    ctx.strokeStyle = '#c0392b'; ctx.setLineDash([5,4]); ctx.lineWidth = 1.5;
+    const ty = yFor(threshLine);
+    ctx.beginPath(); ctx.moveTo(pad, ty); ctx.lineTo(W - pad, ty); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  ctx.strokeStyle = m.color; ctx.lineWidth = 2; ctx.beginPath();
+  pts.forEach((p, i) => {
+    const x = xFor(i), y = yFor(p[metricKey]);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  const lastX = xFor(pts.length - 1), lastY = yFor(pts[pts.length - 1][metricKey]);
+  ctx.fillStyle = m.color;
+  ctx.beginPath(); ctx.arc(lastX, lastY, 3.5, 0, Math.PI * 2); ctx.fill();
+}
+
+function exportChartCSV() {
+  const dataset = currentDataset();
+  if (!dataset.length) { alert('No data to export yet.'); return; }
+  const cols = ['t','risk','tilt','vib','soil','temp','hum','dist'];
+  let csv = cols.join(',') + '\n';
+  dataset.forEach(p => { csv += cols.map(c => (p[c] !== undefined && p[c] !== null ? p[c] : '')).join(',') + '\n'; });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'yaksha_chart_' + chartRange + '_' + Date.now() + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+let adminOpen = false;
+function toggleAdmin() {
+  adminOpen = !adminOpen;
+  document.getElementById('adminPanel').style.display = adminOpen ? 'block' : 'none';
+  document.getElementById('adminToggleBtn').textContent = adminOpen ? 'Hide Admin View' : 'Admin View';
+  if (adminOpen) renderChart();
+}
+setChartRange('live');
+function resetWifi() {
+  if (!confirm('This will forget the saved WiFi and reboot into setup mode. Continue?')) return;
+  fetch(base() + '/resetwifi', { method: 'POST' }).then(() => {
+    alert('WiFi reset. The board is rebooting into setup mode (open network: Landslide-Setup).');
+  }).catch(() => alert('Could not reach the device. Check the address in settings.'));
+}
+
+function recalibrate() {
+  if (!confirm('This sets the CURRENT orientation as the new "level" baseline. Only do this if the box is sitting the way you want it. Continue?')) return;
+  fetch(base() + '/recalibrate', { method: 'POST' }).then(r => r.text()).then(msg => alert(msg))
+    .catch(() => alert('Could not reach the device.'));
+}
+
+function setGeofence() {
+  const val = document.getElementById('geofenceInput').value;
+  if (!val || isNaN(val)) { alert('Enter a radius in meters (1-500)'); return; }
+  fetch(base() + '/setgeofence', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'radius=' + encodeURIComponent(val)
+  }).then(r => r.text()).then(msg => alert(msg))
+    .catch(() => alert('Could not reach the device.'));
+}
+
+// Lets you type in exact lat/lng after moving this compact unit to a new
+// site, instead of waiting for a GPS fix or editing any files on a PC.
+// Takes effect immediately and is saved to flash on the receiver.
+function setHomeLocation() {
+  const lat = document.getElementById('homeLatInput').value;
+  const lng = document.getElementById('homeLngInput').value;
+  if (lat === '' || lng === '' || isNaN(lat) || isNaN(lng)) {
+    alert('Enter both latitude and longitude (e.g. 25.5788, 91.8933)');
+    return;
+  }
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    alert('Latitude must be -90..90 and longitude -180..180');
+    return;
+  }
+  fetch(base() + '/sethome', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'lat=' + encodeURIComponent(lat) + '&lng=' + encodeURIComponent(lng)
+  }).then(r => r.text()).then(msg => alert(msg))
+    .catch(() => alert('Could not reach the device.'));
+}
+
+// Clears a manually-typed home location so the receiver goes back to normal
+// behavior: the next GPS fix becomes the new home point.
+function resetHomeLocation() {
+  if (!confirm('Clear the manual home location? The NEXT GPS fix will become the new home point.')) return;
+  fetch(base() + '/resethome', { method: 'POST' }).then(r => r.text()).then(msg => alert(msg))
+    .catch(() => alert('Could not reach the device.'));
+}
+
+function downloadLog() {
+  window.location.href = base() + '/downloadlog';
+}
+
+let tiltSettingsOpen = false;
+function toggleTiltSettings() {
+  tiltSettingsOpen = !tiltSettingsOpen;
+  document.getElementById('tiltSettingsPanel').classList.toggle('open', tiltSettingsOpen);
+}
+let dispSettingsOpen = false;
+function toggleDispSettings() {
+  dispSettingsOpen = !dispSettingsOpen;
+  document.getElementById('dispSettingsPanel').classList.toggle('open', dispSettingsOpen);
+}
+
+function postThreshold(endpoint, paramName, inputId, min, max) {
+  const val = document.getElementById(inputId).value;
+  if (!val || isNaN(val) || parseFloat(val) < min || parseFloat(val) > max) {
+    alert('Enter a value between ' + min + ' and ' + max);
+    return;
+  }
+  fetch(base() + endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: paramName + '=' + encodeURIComponent(val)
+  }).then(r => r.text()).then(msg => alert(msg))
+    .catch(() => alert('Could not reach the device.'));
+}
+function setTiltThreshold() { postThreshold('/settilt', 'threshold', 'tiltThresholdInput', 1, 90); }
+function setDispRadius() { postThreshold('/setgeofence', 'radius', 'dispRadiusInput', 1, 500); }
+
+let map = null, marker = null, mapReady = false;
+
+// Straight online map: tiles are pulled live from the public OpenStreetMap
+// server. The phone/laptop viewing this dashboard needs its own internet
+// connection for the map tiles to load (the receiver itself is unaffected -
+// it only ever serves live sensor data over the local network/WiFi).
+function ensureMap(lat, lng) {
+  if (mapReady) return;
+  map = L.map('map').setView([lat, lng], 16);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '\u00a9 <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+    minZoom: 5,
+    maxZoom: 19
+  }).addTo(map);
+  marker = L.marker([lat, lng]).addTo(map);
+  mapReady = true;
+}
+
+function refresh() {
+  fetch(base() + '/data').then(r => r.json()).then(d => {
+    const banner = document.getElementById('linkBanner');
+    if (d.linkUp) {
+      banner.className = 'link-banner link-up';
+      banner.textContent = 'Connected \u2014 live data';
+    } else {
+      banner.className = 'link-banner link-down';
+      banner.textContent = 'Signal lost \u2014 last seen ' + d.secsSinceLast + 's ago';
+    }
+
+    document.getElementById('statusCard').style.background = d.riskColor;
+    document.getElementById('statusLevel').textContent = d.riskLevel;
+    document.getElementById('statusMessage').textContent = d.riskMessage;
+
+    document.getElementById('chipVib').classList.toggle('show', !!d.vibrationAlert);
+    document.getElementById('chipMoved').classList.toggle('show', !!d.boxMovedAlert);
+    document.getElementById('chipGps').classList.toggle('show', !!d.gpsDriftAlert);
+    document.getElementById('chipRain').classList.toggle('show', !!d.rainfallLikely);
+    document.getElementById('chipLandslide').classList.toggle('show', !!d.landslideWarning);
+    document.getElementById('chipSiren').classList.toggle('show', !!(d.vibrationAlert || d.boxMovedAlert || d.landslideWarning));
+
+    updateSirenFromData(d);
+    evaluateCustomRules(d);
+
+    document.getElementById('tempValue').textContent = d.temperature.toFixed(1) + '\u00b0C';
+    document.getElementById('humValue').textContent = d.humidity.toFixed(0) + '%';
+    document.getElementById('soilValue').textContent = d.soilPercent + '%';
+
+    const tiltEl = document.getElementById('tiltValue');
+    tiltEl.textContent = d.boxMovedAlert ? 'Excessive' : 'Nil';
+    tiltEl.style.color = d.boxMovedAlert ? '#c0392b' : '';
+
+    const vibEl = document.getElementById('vibValue');
+    vibEl.textContent = d.vibrationAlert ? 'Yes' : 'Nil';
+    vibEl.style.color = d.vibrationAlert ? '#c0392b' : '';
+
+    const dispEl = document.getElementById('dispValue');
+    if (d.gpsDriftAlert) {
+      dispEl.textContent = d.distanceFromHome.toFixed(1) + ' m';
+      dispEl.style.color = '#c0392b';
+    } else {
+      dispEl.textContent = 'Nil';
+      dispEl.style.color = '';
+    }
+
+    const tiltInput = document.getElementById('tiltThresholdInput');
+    if (document.activeElement !== tiltInput) tiltInput.placeholder = 'current: ' + d.tiltThreshold.toFixed(1) + '\u00b0 (tap to change)';
+    const dispInput = document.getElementById('dispRadiusInput');
+    if (document.activeElement !== dispInput) dispInput.placeholder = 'current: ' + d.geofenceRadius.toFixed(1) + ' m (tap to change)';
+    const geofenceInput = document.getElementById('geofenceInput');
+    if (document.activeElement !== geofenceInput) geofenceInput.placeholder = 'current: ' + d.geofenceRadius.toFixed(1) + ' m';
+    const homeLatInput = document.getElementById('homeLatInput');
+    const homeLngInput = document.getElementById('homeLngInput');
+    if (d.homeSet) {
+      if (document.activeElement !== homeLatInput) homeLatInput.placeholder = 'current: ' + d.homeLat.toFixed(6);
+      if (document.activeElement !== homeLngInput) homeLngInput.placeholder = 'current: ' + d.homeLng.toFixed(6);
+    }
+
+    const pxPerDeg = 3.2;
+    const horizonGroup = document.getElementById('horizonGroup');
+    horizonGroup.setAttribute('transform',
+      'rotate(' + (-d.relRoll).toFixed(1) + ' 100 100) translate(0 ' + (d.relPitch * pxPerDeg).toFixed(1) + ')');
+    document.getElementById('a_relpitch').textContent = d.relPitch.toFixed(1) + '\u00b0';
+    document.getElementById('a_relroll').textContent = d.relRoll.toFixed(1) + '\u00b0';
+
+    document.getElementById('a_pitch').textContent = d.pitch.toFixed(1) + '\u00b0 / ' + d.roll.toFixed(1) + '\u00b0';
+    document.getElementById('a_baseline').textContent = d.baselinePitch.toFixed(1) + '\u00b0 / ' + d.baselineRoll.toFixed(1) + '\u00b0';
+    document.getElementById('a_movedalert').textContent = d.boxMovedAlert ? 'YES' : 'no';
+    document.getElementById('a_accel').textContent = d.accelX.toFixed(2)+' / '+d.accelY.toFixed(2)+' / '+d.accelZ.toFixed(2)+' g';
+    document.getElementById('a_gyro').textContent = d.gyroX.toFixed(1)+' / '+d.gyroY.toFixed(1)+' / '+d.gyroZ.toFixed(1)+' dps';
+
+    document.getElementById('a_vib').textContent = d.vib1;
+    document.getElementById('a_vibrate').textContent = d.vibRateScore.toFixed(0) + ' / 100';
+    document.getElementById('a_vibalert').textContent = d.vibrationAlert ? 'YES' : 'no';
+
+    document.getElementById('a_soil').textContent = d.soil1;
+    document.getElementById('a_soilpct').textContent = d.soilPercent + '%';
+    document.getElementById('a_rain').textContent = d.rainfallLikely ? 'YES' : 'no';
+
+    document.getElementById('a_fix').textContent = d.gpsFix ? 'YES' : 'NO';
+    document.getElementById('a_latlng').textContent = d.lat.toFixed(6) + ' / ' + d.lng.toFixed(6);
+    document.getElementById('a_sats').textContent = d.sats;
+    document.getElementById('a_home').textContent = d.homeSet ? (d.homeIsManual ? 'YES (typed in manually)' : 'YES (from GPS fix)') : 'Not yet (needs a GPS fix)';
+    document.getElementById('a_homecoords').textContent = d.homeSet ? d.homeLat.toFixed(6) + ', ' + d.homeLng.toFixed(6) : '--';
+    document.getElementById('a_dist').textContent = d.homeSet ? d.distanceFromHome.toFixed(1) + ' m' : '--';
+    document.getElementById('a_geofence').textContent = d.geofenceRadius.toFixed(1) + ' m';
+    document.getElementById('a_gpsalert').textContent = d.gpsDriftAlert ? 'YES' : 'no';
+    document.getElementById('a_landslide').textContent = d.landslideWarning ? 'YES - GPS + MPU confirmed' : 'no';
+
+    document.getElementById('a_score').textContent = d.riskScore + ' / 100';
+    document.getElementById('a_count').textContent = d.packetCount;
+    document.getElementById('a_errs').textContent = d.checksumErrors;
+    document.getElementById('a_lastpkt').textContent = d.secsSinceLast + 's ago';
+    document.getElementById('a_wifi').textContent = d.wifiSSID + ' (' + d.wifiIP + ')';
+    document.getElementById('a_led').textContent = d.ledStatus;
+    document.getElementById('a_sdstatus').textContent = d.sdOk ? 'OK - logging' : 'Not detected';
+    document.getElementById('a_sdrows').textContent = d.logRows;
+
+    if (d.gpsFix && d.lat !== 0 && d.lng !== 0) {
+      document.getElementById('mapNote').style.display = 'none';
+      ensureMap(d.lat, d.lng);
+      if (mapReady) { marker.setLatLng([d.lat, d.lng]); map.panTo([d.lat, d.lng]); }
+    }
+
+    const logDiv = document.getElementById('eventLogList');
+    if (d.eventLog && d.eventLog.length > 0) {
+      logDiv.innerHTML = d.eventLog.slice().reverse().map(e =>
+        '<div class="event-row"><span>' + e.time + '</span><span>' + e.level + '</span></div>'
+      ).join('');
+    }
+
+    recordHistoryPoint(d);
+    updateDeviceHealth(d);
+    if (adminOpen) {
+      updateSessionStats();
+      if (chartRange === 'live') renderChart();
+    }
+  }).catch(() => {
+    document.getElementById('linkBanner').className = 'link-banner link-down';
+    document.getElementById('linkBanner').textContent = 'Cannot reach ' + deviceAddr + ' \u2014 check settings';
+  });
+}
+
+setInterval(refresh, 1000);
+refresh();
+
+// ---------------- PWA install support ----------------
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+  });
+}
+
+// "Download"/Install link in the footer - mobile/tablet only (the CSS media
+// query hides it outright on desktop-width screens). PWAs don't have a store
+// binary, so this triggers the browser's native "Add to Home Screen"/install
+// prompt where the browser supports it (Chrome/Edge/Samsung Internet on
+// Android). iOS/iPadOS Safari has no such prompt API at all - beforeinstall-
+// prompt never fires there - so on those devices we show the button right
+// away with manual Share-sheet instructions instead of waiting on an event
+// that will never come.
+let deferredInstallPrompt = null;
+const installLink = document.getElementById('installAppLink');
+
+function isIOSDevice() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS 13+ identifies as "Mac"
+}
+function isStandaloneDisplay() {
+  return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+    window.navigator.standalone === true;
+}
+const iosDevice = isIOSDevice();
+if (iosDevice && !isStandaloneDisplay()) installLink.classList.add('show');
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  installLink.classList.add('show');
+});
+
+installLink.addEventListener('click', async (e) => {
+  e.preventDefault();
+  if (iosDevice) {
+    alert('To install: tap the Share icon in Safari\u2019s toolbar, then choose "Add to Home Screen".');
+    return;
+  }
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  installLink.classList.remove('show');
+});
+
+window.addEventListener('appinstalled', () => {
+  installLink.classList.remove('show');
+  deferredInstallPrompt = null;
+});
+</script>
+</body>
+</html>

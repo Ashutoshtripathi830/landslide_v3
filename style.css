@@ -1,0 +1,554 @@
+/* ============================================================
+  Landslide Monitor — "Survey Contour" Briefing Theme
+  Palette and motif drawn from topographic survey maps —
+  contour lines, elevation, terrain — since the whole system
+  watches ground movement. Light throughout; semantic alert
+  colors (red/amber/green) are untouched — only refined.
+   ============================================================ */
+
+:root {
+  --bg: #eef1ec;
+  --surface: #ffffff;
+  --surface-alt: #f5f7f3;
+  --ink: #182620;
+  --ink-soft: #5b6b60;
+  --ink-faint: #98a69c;
+  --border: #dde5db;
+  --accent: #2f6f52;        /* contour-line moss green */
+  --accent-deep: #1c4a35;
+  --accent-soft: #e6f0e9;
+  --soil: #b3792f;          /* ochre/soil — secondary signature color */
+  --soil-soft: #faf0df;
+  --radius: 16px;
+  --shadow-sm: 0 1px 2px rgba(18, 38, 28, 0.05);
+  --shadow: 0 1px 2px rgba(18, 38, 28, 0.04), 0 6px 18px rgba(18, 38, 28, 0.07);
+  --shadow-lg: 0 10px 34px rgba(18, 38, 28, 0.12);
+  --link-up-bg: #eafaf1; --link-up-ink: #1e8449; --link-up-border: #cdeedb;
+  --link-down-bg: #fdecea; --link-down-ink: #c0392b; --link-down-border: #f6cfca;
+  /* Lets native form controls (inputs, selects, scrollbars) pick a matching
+     light/dark rendering on their own, since several are styled only via
+     inline attributes elsewhere in the page. */
+  color-scheme: light;
+}
+
+/* ---- Dark theme ----
+   Same "Survey Contour" palette, re-tuned for a dark surface: deep slate
+   ground instead of paper, brightened moss/ochre accents so they still
+   read clearly. Semantic alert colors (red/amber/green) are left untouched,
+   same as the light theme. */
+body.dark-theme {
+  --bg: #12181f;
+  --surface: #1b232c;
+  --surface-alt: #222c36;
+  --ink: #e7ede8;
+  --ink-soft: #9db0a5;
+  --ink-faint: #6b7d74;
+  --border: #2c3944;
+  --accent: #4fae82;
+  --accent-deep: #7fd4a8;
+  --accent-soft: #1e3128;
+  --soil: #d99b4e;
+  --soil-soft: #35291a;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 18px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 10px 34px rgba(0, 0, 0, 0.45);
+  --link-up-bg: #12261b; --link-up-ink: #4fd383; --link-up-border: #1f4430;
+  --link-down-bg: #2e1512; --link-down-ink: #ff8a7a; --link-down-border: #522019;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* Prevent the browser's native "pull to refresh" gesture. This page already
+   polls and updates itself every second; without this, scrolling to the top
+   and swiping down even slightly (very easy to do while checking alerts on
+   a phone) triggers a full page reload — which looks like the whole app is
+   "refreshing again and again". */
+html, body {
+  overscroll-behavior-y: none;
+}
+
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+body {
+  font-family: 'Inter', -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  color: var(--ink);
+  padding: 20px 16px 40px;
+  max-width: 640px;
+  margin: 0 auto;
+  -webkit-font-smoothing: antialiased;
+  background-color: var(--bg);
+  transition: background-color 0.25s ease, color 0.25s ease;
+  /* Faint topographic contour lines — the paper of a survey map */
+  background-image:
+    radial-gradient(circle at 18% 8%, rgba(47,111,82,0.10) 0, rgba(47,111,82,0.10) 1px, transparent 1px),
+    repeating-radial-gradient(circle at 82% 4%, rgba(47,111,82,0.10) 0px, rgba(47,111,82,0.10) 1px, transparent 1px, transparent 26px),
+    repeating-radial-gradient(circle at 10% 95%, rgba(179,121,47,0.09) 0px, rgba(179,121,47,0.09) 1px, transparent 1px, transparent 30px);
+  background-attachment: fixed;
+}
+/* Same contour motif, brightened slightly so it still shows on a dark ground */
+body.dark-theme {
+  background-image:
+    radial-gradient(circle at 18% 8%, rgba(79,174,130,0.14) 0, rgba(79,174,130,0.14) 1px, transparent 1px),
+    repeating-radial-gradient(circle at 82% 4%, rgba(79,174,130,0.13) 0px, rgba(79,174,130,0.13) 1px, transparent 1px, transparent 26px),
+    repeating-radial-gradient(circle at 10% 95%, rgba(217,155,78,0.12) 0px, rgba(217,155,78,0.12) 1px, transparent 1px, transparent 30px);
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: var(--accent-deep);
+  margin-bottom: 2px;
+}
+
+.subtitle {
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  margin-bottom: 0;
+}
+
+/* ---- Top identity bar ---- */
+.settings-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px 16px;
+  box-shadow: var(--shadow);
+  margin-bottom: 14px;
+  position: relative;
+  overflow: hidden;
+  animation: riseIn 0.45s ease both;
+}
+/* Only the identity bar (icon + title) needs the flex layout — .settings-card
+   is reused elsewhere (e.g. the Trends card) as a plain block container, so
+   the flex rules live on this modifier instead of the base class. */
+.settings-card.topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.settings-card::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 14px; bottom: 14px;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: linear-gradient(180deg, var(--accent) 0%, var(--soil) 100%);
+}
+/* Elevation-ring watermark tucked in the corner — the page's signature motif */
+.settings-card::after {
+  content: "";
+  position: absolute;
+  right: -30px; bottom: -40px;
+  width: 140px; height: 140px;
+  border-radius: 50%;
+  pointer-events: none;
+  background:
+    radial-gradient(circle, transparent 56%, rgba(47,111,82,0.07) 57%, rgba(47,111,82,0.07) 59%, transparent 60%),
+    radial-gradient(circle, transparent 68%, rgba(47,111,82,0.07) 69%, rgba(47,111,82,0.07) 71%, transparent 72%),
+    radial-gradient(circle, transparent 80%, rgba(47,111,82,0.07) 81%, rgba(47,111,82,0.07) 83%, transparent 84%);
+}
+.brand-mark {
+  width: 44px; height: 44px;
+  border-radius: 11px;
+  flex-shrink: 0;
+  object-fit: contain;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  padding: 4px;
+  position: relative;
+  z-index: 1;
+}
+.brand-text { flex: 1; min-width: 0; position: relative; z-index: 1; }
+
+.gear-btn {
+  position: absolute; top: 14px; right: 14px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  width: 34px; height: 34px;
+  border-radius: 9px;
+  color: var(--ink-soft);
+  font-size: 16px;
+  margin: 0; padding: 0;
+  box-shadow: none;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 2;
+}
+.gear-btn:active { background: var(--accent-soft); }
+
+/* Dark/light mode switch — sits next to the gear icon in the top bar */
+.theme-btn {
+  position: absolute; top: 14px; right: 56px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  width: 34px; height: 34px;
+  border-radius: 9px;
+  color: var(--ink-soft);
+  font-size: 15px;
+  margin: 0; padding: 0;
+  box-shadow: none;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 2;
+}
+.theme-btn:active { background: var(--accent-soft); }
+
+/* Small inline gear used on a mini metric tile (tilt / displacement settings) */
+.tile-gear {
+  position: absolute; top: 8px; right: 8px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  width: 24px; height: 24px;
+  border-radius: 7px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  margin: 0; padding: 0;
+  box-shadow: none;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 2;
+}
+.tile-gear:active { background: var(--accent-soft); }
+
+#settingsPanel { display: none; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); flex-basis: 100%; position: relative; z-index: 1; }
+.conn-row { display:flex; gap:8px; margin-bottom: 8px; flex-wrap: wrap; }
+.conn-row input, .conn-row select {
+  flex: 1; min-width: 90px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border);
+  font-size: 14px; font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+  background: var(--surface-alt); color: var(--ink);
+}
+.conn-row input:focus, .conn-row select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.conn-row button { width: auto; margin-bottom: 0; padding: 12px 18px; }
+.conn-hint { font-size: 12px; color: var(--ink-soft); line-height: 1.6; }
+.conn-hint b { color: var(--ink); }
+
+/* Inline settings drawer under a mini metric tile (tilt / displacement threshold) */
+.inline-settings {
+  display: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+  margin: -8px 0 20px;
+  animation: riseIn 0.35s ease both;
+}
+.inline-settings.open { display: block; }
+
+/* ---- Link status banner ---- */
+.link-banner {
+  text-align: center;
+  padding: 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  margin-bottom: 14px;
+  border: 1px solid transparent;
+  animation: riseIn 0.45s ease 0.05s both;
+}
+.link-up { background: var(--link-up-bg); color: var(--link-up-ink); border-color: var(--link-up-border); }
+.link-down { background: var(--link-down-bg); color: var(--link-down-ink); border-color: var(--link-down-border); }
+
+/* ---- Alert strip (semantic colors preserved) ---- */
+.alert-strip { display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
+.alert-chip {
+  display:none; padding:13px 15px; border-radius:11px; font-size:13.5px; font-weight:600;
+  align-items:center; gap:9px; line-height: 1.35; box-shadow: var(--shadow);
+}
+.alert-chip.show { display:flex; }
+@keyframes pulseAlert { 0%{opacity:1;} 50%{opacity:0.6;} 100%{opacity:1;} }
+.chip-vib { background:#fff4e6; color:#a5610a; border:1px solid #fbe0b8; animation: pulseAlert 1.3s infinite; }
+.chip-full { background:#fdecea; color:#c0392b; border:2px solid #c0392b; animation: pulseAlert 1s infinite; }
+.chip-landslide { background:#c0392b; color:#fff; font-weight:800; border:3px solid #7b241c; animation: pulseAlert 0.6s infinite; }
+.chip-gps { background:#fdf2e3; color:#a5610a; border:1px solid #f7e0b6; }
+.chip-rain { background:#e8f2fd; color:#1a5fa8; border:1px solid #cfe4f7; }
+.chip-siren { background:var(--accent-deep); color:#fff; animation: pulseAlert 0.8s infinite; }
+
+/* ---- Primary status card ---- */
+.status-card {
+  border-radius: 20px;
+  padding: 32px 20px 28px;
+  text-align: center;
+  color: white;
+  margin-bottom: 16px;
+  transition: background 0.5s ease;
+  box-shadow: var(--shadow-lg);
+  position: relative;
+  overflow: hidden;
+  animation: riseIn 0.5s ease 0.1s both;
+}
+/* Concentric elevation rings radiating from center — reads as a topo map
+   contour reading, doubles as the status card's signature texture */
+.status-card::after {
+  content: "";
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(circle at 50% 120%, transparent 40%, rgba(255,255,255,0.07) 41%, rgba(255,255,255,0.07) 43%, transparent 44%),
+    radial-gradient(circle at 50% 120%, transparent 55%, rgba(255,255,255,0.07) 56%, rgba(255,255,255,0.07) 58%, transparent 59%),
+    radial-gradient(circle at 50% 120%, transparent 70%, rgba(255,255,255,0.06) 71%, rgba(255,255,255,0.06) 73%, transparent 74%);
+  pointer-events: none;
+}
+.status-card::before {
+  content: "CURRENT RISK LEVEL";
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  opacity: 0.85;
+  margin-bottom: 10px;
+  position: relative;
+  z-index: 1;
+}
+.status-level {
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  position: relative; z-index: 1;
+}
+.status-message { font-size: 15px; margin-top: 8px; opacity: 0.95; font-weight: 500; position: relative; z-index: 1; }
+
+/* ---- Mini metric grid ---- */
+.mini-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.mini-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 10px 14px;
+  text-align: center;
+  box-shadow: var(--shadow);
+  position: relative;
+  animation: riseIn 0.5s ease 0.15s both;
+}
+.mini-card::before {
+  content: "";
+  display: block;
+  width: 26px; height: 26px;
+  margin: 0 auto 8px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 0.9;
+}
+/* nth-of-type counts ALL sibling <div>s (not just .mini-grid ones), so it
+   can't be used to tell the two .mini-grid blocks apart. Target them instead
+   via the element that reliably precedes each one in the markup. */
+/* Temperature */
+.alert-strip + .mini-grid .mini-card:nth-child(1)::before {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232f6f52' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M14 4a2 2 0 0 0-4 0v9.5a3.5 3.5 0 1 0 4 0V4z'/></svg>");
+}
+/* Humidity */
+.alert-strip + .mini-grid .mini-card:nth-child(2)::before {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232f6f52' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 3s6 6.5 6 11a6 6 0 1 1-12 0c0-4.5 6-11 6-11z'/></svg>");
+}
+/* Soil moisture */
+.alert-strip + .mini-grid .mini-card:nth-child(3)::before {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b3792f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 18c2-2 4-2 6 0s4 2 6 0 4-2 6 0M3 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0'/></svg>");
+}
+/* Tilt */
+.alert-strip + .mini-grid + .mini-grid .mini-card:nth-child(1)::before {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232f6f52' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 20h18M6 20 16 6l2 4-8 10'/></svg>");
+}
+/* Vibration */
+.alert-strip + .mini-grid + .mini-grid .mini-card:nth-child(2)::before {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232f6f52' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M2 12h3l2-7 4 14 3-10 2 3h6'/></svg>");
+}
+/* Displacement */
+.alert-strip + .mini-grid + .mini-grid .mini-card:nth-child(3)::before {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b3792f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 2v6M12 16v6M2 12h6M16 12h6'/><circle cx='12' cy='12' r='3'/></svg>");
+}
+.mini-value {
+  font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+  font-size: 23px; font-weight: 700; color: var(--ink);
+}
+.mini-label {
+  font-size: 11px; color: var(--ink-soft); margin-top: 5px;
+  text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600;
+}
+
+/* ---- Map ---- */
+#map {
+  width:100%; height:220px; border-radius: var(--radius);
+  margin-bottom:8px; box-shadow: var(--shadow); border: 1px solid var(--border);
+}
+.map-note { text-align:center; font-size:12px; color: var(--ink-soft); margin: 0 0 20px; }
+
+/* ---- Buttons ---- */
+button {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(155deg, var(--accent) 0%, var(--accent-deep) 100%);
+  color: white;
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  margin-bottom: 20px;
+  box-shadow: 0 3px 10px rgba(28, 74, 53, 0.28);
+  transition: transform 0.05s ease, box-shadow 0.15s ease;
+}
+button:active { transform: translateY(1px); box-shadow: 0 1px 4px rgba(28, 74, 53, 0.28); }
+
+/* ---- Admin panel ---- */
+#adminPanel { display: none; }
+.admin-table {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  margin-bottom: 20px;
+  border-collapse: collapse;
+}
+.admin-table td {
+  padding: 11px 15px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.admin-table tr:nth-child(even) td { background: var(--surface-alt); }
+.admin-table td:first-child { color: var(--ink-soft); font-weight: 500; }
+.admin-table td:last-child {
+  text-align: right; font-weight: 700; color: var(--ink);
+  font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace; font-size: 12.5px;
+}
+.admin-table tr:last-child td { border-bottom: none; }
+
+.section-title {
+  font-size: 12px; font-weight: 700; color: var(--accent-deep);
+  margin: 22px 0 8px; text-transform: uppercase; letter-spacing: 1px;
+  display: flex; align-items: center; gap: 8px;
+}
+.section-title::before {
+  content: ""; width: 16px; height: 3px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--soil)); flex-shrink: 0;
+}
+
+.footer {
+  text-align: center; font-size: 11px; color: var(--ink-faint);
+  margin-top: 10px; letter-spacing: 0.5px;
+}
+.footer::before {
+  content: "⛰"; margin-right: 6px; opacity: 0.6;
+}
+.install-link {
+  display: none;
+  margin-top: 8px;
+  color: var(--accent-deep);
+  font-weight: 700;
+  font-size: 12px;
+  text-decoration: none;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 6px 14px;
+  border-radius: 20px;
+  box-shadow: var(--shadow-sm);
+}
+.install-link:active { background: var(--accent-soft); }
+@media (max-width: 1024px) { .install-link.show { display: inline-block; } }
+@media (min-width: 1025px) { .install-link { display: none !important; } }
+
+/* ---- Event log ---- */
+#eventLogList, #ruleLogList {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: var(--shadow); margin-bottom: 20px; overflow: hidden;
+}
+.event-row {
+  display: flex; justify-content: space-between; padding: 11px 15px;
+  border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.event-row:nth-child(even) { background: var(--surface-alt); }
+.event-row:last-child { border-bottom: none; }
+.event-row span:first-child { color: var(--ink-soft); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+.event-row span:last-child { font-weight: 700; }
+
+#resetWifiBtn { background: linear-gradient(155deg, #d0483a 0%, #96281b 100%); box-shadow: 0 3px 10px rgba(150, 40, 27, 0.3); }
+#recalBtn { background: linear-gradient(155deg, var(--soil) 0%, #8a5a1f 100%); box-shadow: 0 3px 10px rgba(138, 90, 31, 0.3); }
+
+/* ---- Horizon / tilt indicator ---- */
+.horizon-wrap {
+  display:flex; align-items:center; gap:16px; background: var(--surface);
+  border: 1px solid var(--border); border-radius:14px; padding:16px;
+  box-shadow: var(--shadow); margin-bottom:12px;
+}
+#horizonSvg { border-radius:50%; flex-shrink:0; box-shadow: 0 0 0 4px var(--surface-alt) inset, var(--shadow-sm); }
+.horizon-labels { display:flex; flex-direction:column; gap:12px; text-align:center; flex:1; }
+
+/* ---- Trends / prediction chart card ---- */
+#trendCanvas { border: 1px solid var(--border); background: var(--surface-alt); }
+#chartNote { margin-bottom: 4px; }
+#predictionText { font-family: 'Inter', sans-serif; }
+
+/* ---- Custom Alert Rules ---- */
+#rulesPanel { display: none; }
+#rulesPanel.open { display: block; }
+
+.rule-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 15px 16px;
+  box-shadow: var(--shadow);
+  margin-bottom: 12px;
+  animation: riseIn 0.35s ease both;
+}
+.rule-card-head { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.rule-card-title {
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-weight:700; font-size:14px; color: var(--ink);
+}
+.rule-card-summary { font-size:12px; color: var(--ink-soft); margin-top:6px; line-height:1.6; }
+.rule-card-actions { display:flex; gap:6px; margin-top:12px; }
+.rule-card-actions button { width:auto; margin-bottom:0; padding:9px 12px; font-size:12px; }
+
+.rule-toggle {
+  width: auto; margin: 0; padding: 7px 14px; font-size: 11.5px;
+  background: linear-gradient(155deg, var(--accent) 0%, var(--accent-deep) 100%);
+  box-shadow: 0 2px 6px rgba(28, 74, 53, 0.25);
+}
+.rule-toggle.off {
+  background: var(--ink-faint);
+  box-shadow: none;
+}
+
+.rule-builder {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+  margin-bottom: 20px;
+}
+.rule-row {
+  display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap;
+  background: var(--surface-alt); border: 1px solid var(--border); border-radius: 10px; padding: 9px;
+}
+.rule-row select, .rule-row input, .rule-row .act-extra input, .rule-row .act-extra select {
+  padding: 9px 10px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; flex: 1; min-width: 90px;
+  background: var(--surface); color: var(--ink); font-family: 'Inter', sans-serif;
+}
+.rule-row select:focus, .rule-row input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.rule-row .remove-row {
+  width: auto; margin: 0; padding: 9px 12px; font-size: 12px; flex: 0 0 auto;
+  background: linear-gradient(155deg, #d0483a 0%, #96281b 100%);
+  box-shadow: 0 2px 6px rgba(150, 40, 27, 0.25);
+}
