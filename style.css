@@ -65,7 +65,7 @@ body.dark-theme {
    a phone) triggers a full page reload — which looks like the whole app is
    "refreshing again and again". */
 html, body {
-  overscroll-behavior-y: none;
+  
 }
 
 @keyframes riseIn {
