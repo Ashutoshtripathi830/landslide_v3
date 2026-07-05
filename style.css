@@ -64,9 +64,6 @@ body.dark-theme {
    and swiping down even slightly (very easy to do while checking alerts on
    a phone) triggers a full page reload — which looks like the whole app is
    "refreshing again and again". */
-html, body {
-  
-}
 
 @keyframes riseIn {
   from { opacity: 0; transform: translateY(10px); }
