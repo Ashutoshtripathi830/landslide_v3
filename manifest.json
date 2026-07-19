@@ -1,5 +1,5 @@
 {
-  "name": "YAKSHA Landslide Monitor",
+  "name": "12 ENGR",
   "short_name": "Landslide",
   "description": "Live dashboard for the Team YAKSHA LoRa landslide / ground movement monitoring system",
   "start_url": "./index.html",
