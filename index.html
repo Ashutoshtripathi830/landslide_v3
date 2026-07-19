@@ -1262,6 +1262,7 @@ function refresh() {
     const tiltEl = document.getElementById('tiltValue');
     tiltEl.textContent = d.boxMovedAlert ? 'Excessive' : 'Nil';
     tiltEl.style.color = d.boxMovedAlert ? '#c0392b' : '';
+    tiltEl.style.fontSize = d.boxMovedAlert ? '18px' : '';
 
     const vibEl = document.getElementById('vibValue');
     vibEl.textContent = d.vibrationAlert ? 'Yes' : 'Nil';
