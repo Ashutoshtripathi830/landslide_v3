@@ -475,7 +475,6 @@ function updateSirenFromData(d) {
   let wanted = 'none';
   if (d.landslideWarning) wanted = 'landslide';
   else if (typeof soilSirenEndTime !== 'undefined' && Date.now() < soilSirenEndTime) wanted = 'landslide';
-  else if (d.boxMovedAlert) wanted = 'moved';
   else if (d.vibrationAlert) wanted = 'vib';
 
   if (wanted === 'none') {
@@ -1193,11 +1192,11 @@ function refresh() {
     document.getElementById('statusMessage').textContent = d.riskMessage;
 
     document.getElementById('chipVib').classList.toggle('show', !!d.vibrationAlert);
-    document.getElementById('chipMoved').classList.toggle('show', !!d.boxMovedAlert);
+    document.getElementById('chipMoved').classList.toggle('show', false);
     document.getElementById('chipGps').classList.toggle('show', !!d.gpsDriftAlert);
     document.getElementById('chipRain').classList.toggle('show', !!d.rainfallLikely);
     document.getElementById('chipLandslide').classList.toggle('show', !!d.landslideWarning);
-    document.getElementById('chipSiren').classList.toggle('show', !!(d.vibrationAlert || d.boxMovedAlert || d.landslideWarning || (typeof soilSirenEndTime !== 'undefined' && Date.now() < soilSirenEndTime)));
+    document.getElementById('chipSiren').classList.toggle('show', !!(d.vibrationAlert || d.landslideWarning || (typeof soilSirenEndTime !== 'undefined' && Date.now() < soilSirenEndTime)));
 
     let currentSoilState = 0;
     if (d.soilPercent > 95) currentSoilState = 3;
@@ -1260,9 +1259,9 @@ function refresh() {
     document.getElementById('soilValue').textContent = d.soilPercent + '%';
 
     const tiltEl = document.getElementById('tiltValue');
-    tiltEl.textContent = d.boxMovedAlert ? 'Excessive' : 'Nil';
-    tiltEl.style.color = d.boxMovedAlert ? '#c0392b' : '';
-    tiltEl.style.fontSize = d.boxMovedAlert ? '18px' : '';
+    tiltEl.textContent = 'Nil';
+    tiltEl.style.color = '';
+    tiltEl.style.fontSize = '';
 
     const vibEl = document.getElementById('vibValue');
     vibEl.textContent = d.vibrationAlert ? 'Yes' : 'Nil';
