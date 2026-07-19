@@ -83,7 +83,8 @@
     or its SensorPacket struct.
 
   ------------------------------------------------------------
-  ADMIN VIEW: TRENDS, PREDICTION & SYSTEM HEALTH (added on top of the CORS build)
+  ADMIN VIEW: TRENDS, PREDICTION & SYSTEM HEALTH (added on top of the CORS
+  build)
   ------------------------------------------------------------
   - New GET /history endpoint reads the tail of the SD card's CSV log and
     returns it as compact JSON (timestamp, risk score, tilt, vibration, soil,
@@ -98,17 +99,17 @@
   ============================================================
 */
 
-#include <HardwareSerial.h>
-#include <WiFi.h>
-#include <WebServer.h>
-#include <Preferences.h>
-#include <ESPmDNS.h>
-#include <Wire.h>
 #include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
 #include <Adafruit_NeoPixel.h>
-#include <SPI.h>
+#include <Adafruit_SSD1306.h>
+#include <ESPmDNS.h>
+#include <HardwareSerial.h>
+#include <Preferences.h>
 #include <SD.h>
+#include <SPI.h>
+#include <WebServer.h>
+#include <WiFi.h>
+#include <Wire.h>
 
 // ---------------- LoRa pins ----------------
 #define M0 4
@@ -131,19 +132,21 @@ bool oledOk = false;
 Adafruit_NeoPixel strip(NUM_LEDS, STRIP_PIN, NEO_GRB + NEO_KHZ800);
 String ledStatusText = "Booting";
 
-uint32_t COL_OFF, COL_BLUE, COL_YELLOW, COL_GREEN, COL_ORANGE, COL_RED, COL_WHITE, COL_PURPLE, COL_CYAN;
+uint32_t COL_OFF, COL_BLUE, COL_YELLOW, COL_GREEN, COL_ORANGE, COL_RED,
+    COL_WHITE, COL_PURPLE, COL_CYAN;
 
 // ---------------- Relay / Buzzer (siren) ----------------
 #define RELAY_PIN 25
-#define RELAY_ACTIVE_HIGH true   // flip to false if your relay triggers on LOW instead
+#define RELAY_ACTIVE_HIGH                                                      \
+  true // flip to false if your relay triggers on LOW instead
 
 // ---------------- SD card (data logger) ----------------
 // Explicit SPI pins (not the ESP32's default VSPI mapping) - GPIO5 is already
 // used by the LoRa module's M1 pin, so the card's CS moves to GPIO13 instead.
-#define SD_SCK  18
+#define SD_SCK 18
 #define SD_MISO 19
 #define SD_MOSI 23
-#define SD_CS   13
+#define SD_CS 13
 #define LOG_FILENAME "/yaksha_log.csv"
 bool sdOk = false;
 unsigned long logRowsWritten = 0;
@@ -164,7 +167,7 @@ unsigned long logRowsWritten = 0;
 #define ALERT_HOLD_MS 60000UL
 
 // ---------------- WiFi config portal (open AP) ----------------
-const char* CONFIG_AP_SSID = "Landslide-Setup";   // open network, no password
+const char *CONFIG_AP_SSID = "Landslide-Setup"; // open network, no password
 IPAddress apIP(192, 168, 4, 1);
 IPAddress apGateway(192, 168, 4, 1);
 IPAddress apSubnet(255, 255, 255, 0);
@@ -229,8 +232,11 @@ float baselineRoll = 0;
 float relPitch = 0;
 float relRoll = 0;
 bool boxMovedAlert = false;
-unsigned long boxMovedAlertUntil = 0;   // millis() timestamp - alert stays true until this time (see ALERT_HOLD_MS)
-float tiltThresholdDeg = 8.0;   // combined |relPitch|+|relRoll| beyond this = flagged as moved/knocked - now runtime-settable, see /settilt
+unsigned long boxMovedAlertUntil = 0; // millis() timestamp - alert stays true
+                                      // until this time (see ALERT_HOLD_MS)
+float tiltThresholdDeg =
+    8.0; // combined |relPitch|+|relRoll| beyond this = flagged as moved/knocked
+         // - now runtime-settable, see /settilt
 
 String staIP = "";
 String staSSID = "";
@@ -260,7 +266,7 @@ bool havePacket = false;
 // Simple state machine for frame sync
 enum RxState { WAIT_HDR1, WAIT_HDR2, WAIT_LEN, WAIT_PAYLOAD, WAIT_CHK };
 RxState state = WAIT_HDR1;
-uint8_t payloadBuf[96];   // must be >= sizeof(SensorPacket)
+uint8_t payloadBuf[96]; // must be >= sizeof(SensorPacket)
 uint8_t payloadIdx = 0;
 uint8_t expectedLen = 0;
 
@@ -278,8 +284,10 @@ bool soilHistFilled = false;
 uint8_t vibHistory[VIB_WINDOW];
 uint8_t vibHistIdx = 0;
 float vibRateScore = 0;
-bool vibrationAlert = false;   // stays true for ALERT_HOLD_MS after the last hit (sensor is buried, so any hit matters)
-unsigned long vibrationAlertUntil = 0;   // millis() timestamp - alert stays true until this time
+bool vibrationAlert = false; // stays true for ALERT_HOLD_MS after the last hit
+                             // (sensor is buried, so any hit matters)
+unsigned long vibrationAlertUntil =
+    0; // millis() timestamp - alert stays true until this time
 
 // ---------------- Soil moisture calibration ----------------
 // Capacitive soil sensors read HIGH (near SOIL_RAW_DRY) in open air / dry soil
@@ -305,9 +313,11 @@ float distanceFromHome = 0;
 // fixed #define; it's now a runtime variable so it can be changed live from
 // the dashboard's Admin View (Set Geofence) without re-flashing, and it's
 // saved to flash (Preferences) so it survives a reboot.
-#define GPS_DRIFT_THRESHOLD_M_DEFAULT 8.0   // used only the very first time the board boots (nothing saved yet)
+#define GPS_DRIFT_THRESHOLD_M_DEFAULT                                          \
+  8.0 // used only the very first time the board boots (nothing saved yet)
 float geofenceRadiusM = GPS_DRIFT_THRESHOLD_M_DEFAULT;
-#define GPS_DRIFT_STREAK_NEEDED 3   // must see drift on 3 readings in a row before alerting
+#define GPS_DRIFT_STREAK_NEEDED                                                \
+  3 // must see drift on 3 readings in a row before alerting
 uint8_t gpsDriftStreak = 0;
 bool gpsDriftAlert = false;
 
@@ -721,11 +731,11 @@ function refresh() {
     document.getElementById('statusMessage').textContent = d.riskMessage;
 
     document.getElementById('chipVib').classList.toggle('show', !!d.vibrationAlert);
-    document.getElementById('chipMoved').classList.toggle('show', !!d.boxMovedAlert);
+    document.getElementById('chipMoved').classList.toggle('show', false);
     document.getElementById('chipGps').classList.toggle('show', !!d.gpsDriftAlert);
     document.getElementById('chipRain').classList.toggle('show', !!d.rainfallLikely);
     document.getElementById('chipLandslide').classList.toggle('show', !!d.landslideWarning);
-    document.getElementById('chipSiren').classList.toggle('show', !!(d.vibrationAlert || d.boxMovedAlert || d.landslideWarning));
+    document.getElementById('chipSiren').classList.toggle('show', !!(d.landslideWarning));
 
     document.getElementById('tempValue').textContent = d.temperature.toFixed(1) + '\u00b0C';
     document.getElementById('humValue').textContent = d.humidity.toFixed(0) + '%';
@@ -803,7 +813,8 @@ void oledInit() {
   Wire.begin(OLED_SDA, OLED_SCL);
   oledOk = display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
   if (!oledOk) {
-    Serial.println("[WARN] OLED not found at 0x3C - continuing without display");
+    Serial.println(
+        "[WARN] OLED not found at 0x3C - continuing without display");
     return;
   }
   display.clearDisplay();
@@ -816,7 +827,8 @@ void oledInit() {
 }
 
 void oledShowConfigMode() {
-  if (!oledOk) return;
+  if (!oledOk)
+    return;
   display.clearDisplay();
   display.setCursor(0, 0);
   display.setTextSize(1);
@@ -833,26 +845,30 @@ void oledShowConfigMode() {
 }
 
 void oledShowConnecting(const String &ssid, int attempt) {
-  if (!oledOk) return;
+  if (!oledOk)
+    return;
   display.clearDisplay();
   display.setCursor(0, 0);
   display.println("Connecting to:");
   display.println(ssid);
   display.println("");
   String dots = "";
-  for (int i = 0; i < (attempt % 4); i++) dots += ".";
+  for (int i = 0; i < (attempt % 4); i++)
+    dots += ".";
   display.println("Please wait" + dots);
   display.display();
 }
 
 void oledShowOperational() {
-  if (!oledOk) return;
+  if (!oledOk)
+    return;
   display.clearDisplay();
   display.setTextSize(1);
 
   // WiFi network name (truncated so it can't run off the 128px-wide screen)
   String ssidShort = staSSID;
-  if (ssidShort.length() > 20) ssidShort = ssidShort.substring(0, 17) + "...";
+  if (ssidShort.length() > 20)
+    ssidShort = ssidShort.substring(0, 17) + "...";
   display.setCursor(0, 0);
   display.print("WiFi: ");
   display.println(ssidShort);
@@ -890,15 +906,15 @@ void oledShowOperational() {
 void ledStripInit() {
   strip.begin();
   strip.setBrightness(90);
-  COL_OFF    = strip.Color(0, 0, 0);
-  COL_BLUE   = strip.Color(0, 80, 255);
+  COL_OFF = strip.Color(0, 0, 0);
+  COL_BLUE = strip.Color(0, 80, 255);
   COL_YELLOW = strip.Color(255, 190, 0);
-  COL_GREEN  = strip.Color(0, 200, 0);
+  COL_GREEN = strip.Color(0, 200, 0);
   COL_ORANGE = strip.Color(255, 80, 0);
-  COL_RED    = strip.Color(255, 0, 0);
-  COL_WHITE  = strip.Color(180, 180, 180);
+  COL_RED = strip.Color(255, 0, 0);
+  COL_WHITE = strip.Color(180, 180, 180);
   COL_PURPLE = strip.Color(150, 0, 220);
-  COL_CYAN   = strip.Color(0, 200, 200);
+  COL_CYAN = strip.Color(0, 200, 200);
   strip.fill(COL_OFF);
   strip.show();
 }
@@ -943,15 +959,25 @@ void updateLedStrip() {
 
   if (!linkUp) {
     ledStatusText = "No signal (white blink)";
-    if (now - lastStep > 500) { lastStep = now; toggle = !toggle; ledFill(toggle ? COL_WHITE : COL_OFF); }
+    if (now - lastStep > 500) {
+      lastStep = now;
+      toggle = !toggle;
+      ledFill(toggle ? COL_WHITE : COL_OFF);
+    }
     return;
   }
 
   // MPU-confirmed landslide warning: highest priority of all, all-pixel
-  // very-fast red strobe so it's unmistakably different from a plain tilt alert.
+  // very-fast red strobe so it's unmistakably different from a plain tilt
+  // alert.
   if (landslideWarning) {
-    ledStatusText = "LANDSLIDE WARNING - GPS + MPU confirmed (rapid red strobe)";
-    if (now - lastStep > 60) { lastStep = now; toggle = !toggle; ledFill(toggle ? COL_RED : COL_OFF); }
+    ledStatusText =
+        "LANDSLIDE WARNING - GPS + MPU confirmed (rapid red strobe)";
+    if (now - lastStep > 60) {
+      lastStep = now;
+      toggle = !toggle;
+      ledFill(toggle ? COL_RED : COL_OFF);
+    }
     return;
   }
 
@@ -959,7 +985,11 @@ void updateLedStrip() {
   // shifted, not just a vibration hit. FULL ALERT: fast red strobe.
   if (boxMovedAlert) {
     ledStatusText = "FULL ALERT - tilt/roll detected (red strobe)";
-    if (now - lastStep > 100) { lastStep = now; toggle = !toggle; ledFill(toggle ? COL_RED : COL_OFF); }
+    if (now - lastStep > 100) {
+      lastStep = now;
+      toggle = !toggle;
+      ledFill(toggle ? COL_RED : COL_OFF);
+    }
     return;
   }
 
@@ -980,24 +1010,39 @@ void updateLedStrip() {
 
   if (riskLevel == "DANGER") {
     ledStatusText = "DANGER (red strobe)";
-    if (now - lastStep > 150) { lastStep = now; toggle = !toggle; ledFill(toggle ? COL_RED : COL_OFF); }
+    if (now - lastStep > 150) {
+      lastStep = now;
+      toggle = !toggle;
+      ledFill(toggle ? COL_RED : COL_OFF);
+    }
   } else if (riskLevel == "WARNING") {
     ledStatusText = "WARNING (orange blink)";
-    if (now - lastStep > 400) { lastStep = now; toggle = !toggle; ledFill(toggle ? COL_ORANGE : COL_OFF); }
+    if (now - lastStep > 400) {
+      lastStep = now;
+      toggle = !toggle;
+      ledFill(toggle ? COL_ORANGE : COL_OFF);
+    }
   } else if (riskLevel == "WATCH") {
-    ledStatusText = gpsDriftAlert ? "WATCH + GPS drift (yellow/purple chase)" : "WATCH (yellow chase)";
+    ledStatusText = gpsDriftAlert ? "WATCH + GPS drift (yellow/purple chase)"
+                                  : "WATCH (yellow chase)";
     if (now - lastStep > 220) {
       lastStep = now;
       strip.clear();
-      strip.setPixelColor(chasePos % NUM_LEDS, gpsDriftAlert ? COL_PURPLE : COL_YELLOW);
+      strip.setPixelColor(chasePos % NUM_LEDS,
+                          gpsDriftAlert ? COL_PURPLE : COL_YELLOW);
       strip.show();
       chasePos++;
     }
   } else {
-    // SAFE - gentle green breathing. gpsDriftAlert alone (without high score) still gets a purple tint.
+    // SAFE - gentle green breathing. gpsDriftAlert alone (without high score)
+    // still gets a purple tint.
     if (gpsDriftAlert) {
       ledStatusText = "SAFE + GPS drift (purple blink)";
-      if (now - lastStep > 400) { lastStep = now; toggle = !toggle; ledFill(toggle ? COL_PURPLE : COL_OFF); }
+      if (now - lastStep > 400) {
+        lastStep = now;
+        toggle = !toggle;
+        ledFill(toggle ? COL_PURPLE : COL_OFF);
+      }
     } else if (rainfallLikely) {
       ledStatusText = "SAFE, rain likely (blue breathing)";
       float phase = (now % 3000) / 3000.0;
@@ -1033,10 +1078,12 @@ void sdInit() {
   if (!SD.exists(LOG_FILENAME)) {
     File f = SD.open(LOG_FILENAME, FILE_WRITE);
     if (f) {
-      f.println("rtcEpoch,timeOfDay,pitch,roll,relPitch,relRoll,accelX,accelY,accelZ,"
-                 "gyroX,gyroY,gyroZ,temperature,humidity,vib1,soil1,soilPercent,"
-                 "gpsFix,latitude,longitude,satellites,distanceFromHome,"
-                 "riskScore,riskLevel,vibrationAlert,boxMovedAlert,gpsDriftAlert,landslideWarning");
+      f.println(
+          "rtcEpoch,timeOfDay,pitch,roll,relPitch,relRoll,accelX,accelY,accelZ,"
+          "gyroX,gyroY,gyroZ,temperature,humidity,vib1,soil1,soilPercent,"
+          "gpsFix,latitude,longitude,satellites,distanceFromHome,"
+          "riskScore,riskLevel,vibrationAlert,boxMovedAlert,gpsDriftAlert,"
+          "landslideWarning");
       f.close();
     }
   }
@@ -1044,40 +1091,68 @@ void sdInit() {
 }
 
 void logToSD() {
-  if (!sdOk) return;
+  if (!sdOk)
+    return;
   File f = SD.open(LOG_FILENAME, FILE_APPEND);
   if (!f) {
     Serial.println("[WARN] SD write failed - marking card unavailable");
     sdOk = false;
     return;
   }
-  f.print(packet.rtcEpoch); f.print(",");
-  f.print(epochToTimeStr(packet.rtcEpoch)); f.print(",");
-  f.print(packet.pitch, 2); f.print(",");
-  f.print(packet.roll, 2); f.print(",");
-  f.print(relPitch, 2); f.print(",");
-  f.print(relRoll, 2); f.print(",");
-  f.print(packet.accelX, 3); f.print(",");
-  f.print(packet.accelY, 3); f.print(",");
-  f.print(packet.accelZ, 3); f.print(",");
-  f.print(packet.gyroX, 2); f.print(",");
-  f.print(packet.gyroY, 2); f.print(",");
-  f.print(packet.gyroZ, 2); f.print(",");
-  f.print(packet.temperature, 1); f.print(",");
-  f.print(packet.humidity, 1); f.print(",");
-  f.print(packet.vib1); f.print(",");
-  f.print(packet.soil1); f.print(",");
-  f.print(soilPercent1); f.print(",");
-  f.print(packet.gpsFix); f.print(",");
-  f.print(packet.latitude, 6); f.print(",");
-  f.print(packet.longitude, 6); f.print(",");
-  f.print(packet.satellites); f.print(",");
-  f.print(distanceFromHome, 1); f.print(",");
-  f.print(riskScore); f.print(",");
-  f.print(riskLevel); f.print(",");
-  f.print(vibrationAlert ? 1 : 0); f.print(",");
-  f.print(boxMovedAlert ? 1 : 0); f.print(",");
-  f.print(gpsDriftAlert ? 1 : 0); f.print(",");
+  f.print(packet.rtcEpoch);
+  f.print(",");
+  f.print(epochToTimeStr(packet.rtcEpoch));
+  f.print(",");
+  f.print(packet.pitch, 2);
+  f.print(",");
+  f.print(packet.roll, 2);
+  f.print(",");
+  f.print(relPitch, 2);
+  f.print(",");
+  f.print(relRoll, 2);
+  f.print(",");
+  f.print(packet.accelX, 3);
+  f.print(",");
+  f.print(packet.accelY, 3);
+  f.print(",");
+  f.print(packet.accelZ, 3);
+  f.print(",");
+  f.print(packet.gyroX, 2);
+  f.print(",");
+  f.print(packet.gyroY, 2);
+  f.print(",");
+  f.print(packet.gyroZ, 2);
+  f.print(",");
+  f.print(packet.temperature, 1);
+  f.print(",");
+  f.print(packet.humidity, 1);
+  f.print(",");
+  f.print(packet.vib1);
+  f.print(",");
+  f.print(packet.soil1);
+  f.print(",");
+  f.print(soilPercent1);
+  f.print(",");
+  f.print(packet.gpsFix);
+  f.print(",");
+  f.print(packet.latitude, 6);
+  f.print(",");
+  f.print(packet.longitude, 6);
+  f.print(",");
+  f.print(packet.satellites);
+  f.print(",");
+  f.print(distanceFromHome, 1);
+  f.print(",");
+  f.print(riskScore);
+  f.print(",");
+  f.print(riskLevel);
+  f.print(",");
+  f.print(vibrationAlert ? 1 : 0);
+  f.print(",");
+  f.print(boxMovedAlert ? 1 : 0);
+  f.print(",");
+  f.print(gpsDriftAlert ? 1 : 0);
+  f.print(",");
   f.println(landslideWarning ? 1 : 0);
   f.close();
   logRowsWritten++;
@@ -1113,19 +1188,18 @@ void updateRelay() {
   }
 
   if (landslideWarning) {
-    relayWrite(true);   // continuous solid tone - the most urgent pattern
+    relayWrite(true); // continuous solid tone - the most urgent pattern
     return;
   }
 
   if (boxMovedAlert) {
-    relayWrite((now % 240) < 120);   // rapid on/off wail, ~4 times/sec
+    relayWrite((now % 240) < 120); // rapid on/off wail, ~4 times/sec
     return;
   }
 
   if (vibrationAlert) {
-    unsigned long cyclePos = now % 1000;
-    // beep (150ms) - gap (150ms) - beep (150ms) - longer gap (550ms), repeat
-    relayWrite((cyclePos < 150) || (cyclePos >= 300 && cyclePos < 450));
+    // vibration = alert only, no buzzer/siren
+    relayWrite(false);
     return;
   }
 
@@ -1139,19 +1213,19 @@ void handleScan() {
   int n = WiFi.scanNetworks();
   String json = "[";
   for (int i = 0; i < n; i++) {
-    if (i > 0) json += ",";
+    if (i > 0)
+      json += ",";
     String ssid = WiFi.SSID(i);
     ssid.replace("\"", "");
     json += "{\"ssid\":\"" + ssid + "\",\"rssi\":" + String(WiFi.RSSI(i)) +
-            ",\"secure\":" + (WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "false" : "true") + "}";
+            ",\"secure\":" +
+            (WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "false" : "true") + "}";
   }
   json += "]";
   server.send(200, "application/json", json);
 }
 
-void handleConfigRoot() {
-  server.send(200, "text/html", CONFIG_PAGE_HTML);
-}
+void handleConfigRoot() { server.send(200, "text/html", CONFIG_PAGE_HTML); }
 
 void handleSaveWifi() {
   String ssid = server.arg("ssid");
@@ -1208,7 +1282,7 @@ void handleSetGeofence() {
     return;
   }
   geofenceRadiusM = r;
-  gpsDriftStreak = 0;   // don't carry an old streak across a threshold change
+  gpsDriftStreak = 0; // don't carry an old streak across a threshold change
   prefs.putFloat("geofence", r);
   Serial.print("[CFG] Geofence radius set to ");
   Serial.print(r, 1);
@@ -1230,7 +1304,8 @@ void handleSetHome() {
   float lat = server.arg("lat").toFloat();
   float lng = server.arg("lng").toFloat();
   if (lat < -90.0 || lat > 90.0 || lng < -180.0 || lng > 180.0) {
-    server.send(400, "text/plain", "lat must be -90..90 and lng must be -180..180");
+    server.send(400, "text/plain",
+                "lat must be -90..90 and lng must be -180..180");
     return;
   }
   homeLat = lat;
@@ -1243,8 +1318,11 @@ void handleSetHome() {
   prefs.putFloat("homeLng", lng);
   prefs.putBool("homeManual", true);
   Serial.print("[CFG] Home location set manually to ");
-  Serial.print(lat, 6); Serial.print(", "); Serial.println(lng, 6);
-  server.send(200, "text/plain", "Home set to " + String(lat, 6) + ", " + String(lng, 6));
+  Serial.print(lat, 6);
+  Serial.print(", ");
+  Serial.println(lng, 6);
+  server.send(200, "text/plain",
+              "Home set to " + String(lat, 6) + ", " + String(lng, 6));
 }
 
 // Clears a manually-typed home location and goes back to normal behavior:
@@ -1258,14 +1336,16 @@ void handleResetHome() {
   distanceFromHome = 0;
   gpsDriftStreak = 0;
   prefs.putBool("homeManual", false);
-  Serial.println("[CFG] Home location cleared - next GPS fix will set a new home");
-  server.send(200, "text/plain", "Home cleared - next GPS fix becomes the new home point");
+  Serial.println(
+      "[CFG] Home location cleared - next GPS fix will set a new home");
+  server.send(200, "text/plain",
+              "Home cleared - next GPS fix becomes the new home point");
 }
 
-
-// Lets you set the tilt alert threshold (degrees, combined |relPitch|+|relRoll|)
-// live from the dashboard instead of re-flashing firmware. Saved to flash so
-// it survives a reboot. This is what flips boxMovedAlert to "excessive".
+// Lets you set the tilt alert threshold (degrees, combined
+// |relPitch|+|relRoll|) live from the dashboard instead of re-flashing
+// firmware. Saved to flash so it survives a reboot. This is what flips
+// boxMovedAlert to "excessive".
 void handleSetTilt() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
   if (!server.hasArg("threshold")) {
@@ -1274,7 +1354,8 @@ void handleSetTilt() {
   }
   float t = server.arg("threshold").toFloat();
   if (t < 1.0 || t > 90.0) {
-    server.send(400, "text/plain", "Threshold must be between 1 and 90 degrees");
+    server.send(400, "text/plain",
+                "Threshold must be between 1 and 90 degrees");
     return;
   }
   tiltThresholdDeg = t;
@@ -1282,13 +1363,16 @@ void handleSetTilt() {
   Serial.print("[CFG] Tilt alert threshold set to ");
   Serial.print(t, 1);
   Serial.println(" deg");
-  server.send(200, "text/plain", "Tilt threshold set to " + String(t, 1) + " deg");
+  server.send(200, "text/plain",
+              "Tilt threshold set to " + String(t, 1) + " deg");
 }
 
 // Serves the raw CSV log file for download from the Admin View.
 void handleDownloadLog() {
   if (!sdOk || !SD.exists(LOG_FILENAME)) {
-    server.send(404, "text/plain", "No log file available (SD card not present or not yet written)");
+    server.send(
+        404, "text/plain",
+        "No log file available (SD card not present or not yet written)");
     return;
   }
   File f = SD.open(LOG_FILENAME, FILE_READ);
@@ -1312,13 +1396,14 @@ void handleDownloadLog() {
 // Caught via onNotFound since ESP32 WebServer has no wildcard route matching.
 void handleTile() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
-  String uri = server.uri();   // e.g. /tiles/16/54823/32987.png
+  String uri = server.uri(); // e.g. /tiles/16/54823/32987.png
   if (!uri.startsWith("/tiles/")) {
     server.send(404, "text/plain", "Not found");
     return;
   }
   if (!sdOk) {
-    server.send(404, "image/png", "");   // Leaflet just treats a missing tile as blank
+    server.send(404, "image/png",
+                ""); // Leaflet just treats a missing tile as blank
     return;
   }
   if (!SD.exists(uri)) {
@@ -1349,7 +1434,7 @@ void startConfigPortal() {
   sysState = STATE_AP_CONFIG;
   WiFi.mode(WIFI_AP);
   WiFi.softAPConfig(apIP, apGateway, apSubnet);
-  WiFi.softAP(CONFIG_AP_SSID);   // open network, no password arg
+  WiFi.softAP(CONFIG_AP_SSID); // open network, no password arg
 
   server.on("/", handleConfigRoot);
   server.on("/scan", handleScan);
@@ -1371,14 +1456,17 @@ void startConfigPortal() {
 bool tryConnectSavedWifi() {
   String ssid = prefs.getString("ssid", "");
   String password = prefs.getString("pass", "");
-  if (ssid.length() == 0) return false;
+  if (ssid.length() == 0)
+    return false;
 
   Serial.print("[WIFI] Trying saved network: ");
   Serial.println(ssid);
 
   WiFi.mode(WIFI_STA);
-  if (password.length() > 0) WiFi.begin(ssid.c_str(), password.c_str());
-  else WiFi.begin(ssid.c_str());
+  if (password.length() > 0)
+    WiFi.begin(ssid.c_str(), password.c_str());
+  else
+    WiFi.begin(ssid.c_str());
 
   unsigned long start = millis();
   int attempt = 0;
@@ -1418,8 +1506,10 @@ bool tryConnectSavedWifi() {
   server.begin();
 
   Serial.println("=== OPERATIONAL MODE ===");
-  Serial.print("Joined: "); Serial.println(staSSID);
-  Serial.print("Dashboard: http://"); Serial.println(staIP);
+  Serial.print("Joined: ");
+  Serial.println(staSSID);
+  Serial.print("Dashboard: http://");
+  Serial.println(staIP);
 
   oledShowOperational();
   return true;
@@ -1438,8 +1528,10 @@ void setup() {
   digitalWrite(M1, LOW);
   E32Serial.begin(9600, SERIAL_8N1, 16, 17);
 
-  for (int i = 0; i < SOIL_HISTORY_SIZE; i++) soilHistory1[i] = 0;
-  for (int i = 0; i < VIB_WINDOW; i++) vibHistory[i] = 0;
+  for (int i = 0; i < SOIL_HISTORY_SIZE; i++)
+    soilHistory1[i] = 0;
+  for (int i = 0; i < VIB_WINDOW; i++)
+    vibHistory[i] = 0;
 
   oledInit();
   ledStripInit();
@@ -1455,7 +1547,9 @@ void setup() {
     homeLng = prefs.getFloat("homeLng", 0);
     homeSet = true;
     Serial.print("[CFG] Loaded manual home location from flash: ");
-    Serial.print(homeLat, 6); Serial.print(", "); Serial.println(homeLng, 6);
+    Serial.print(homeLat, 6);
+    Serial.print(", ");
+    Serial.println(homeLng, 6);
   }
   if (!tryConnectSavedWifi()) {
     startConfigPortal();
@@ -1491,58 +1585,64 @@ void loop() {
 
     // Warn in serial if nothing has arrived in a while
     static unsigned long lastWarn = 0;
-    if (packetCount > 0 && millis() - lastPacketTime > 5000 && millis() - lastWarn > 5000) {
+    if (packetCount > 0 && millis() - lastPacketTime > 5000 &&
+        millis() - lastWarn > 5000) {
       lastWarn = millis();
-      Serial.println("[WARN] No packet received in 5+ seconds - link may be down");
+      Serial.println(
+          "[WARN] No packet received in 5+ seconds - link may be down");
     }
   }
 }
 
 void processByte(uint8_t b) {
   switch (state) {
-    case WAIT_HDR1:
-      if (b == 0xAA) state = WAIT_HDR2;
-      break;
+  case WAIT_HDR1:
+    if (b == 0xAA)
+      state = WAIT_HDR2;
+    break;
 
-    case WAIT_HDR2:
-      if (b == 0x55) state = WAIT_LEN;
-      else state = WAIT_HDR1;
-      break;
-
-    case WAIT_LEN:
-      expectedLen = b;
-      payloadIdx = 0;
-      if (expectedLen == PACKET_LEN && expectedLen <= sizeof(payloadBuf)) {
-        state = WAIT_PAYLOAD;
-      } else {
-        Serial.print("[ERR] Length mismatch, got ");
-        Serial.print(expectedLen);
-        Serial.print(" expected ");
-        Serial.println(PACKET_LEN);
-        state = WAIT_HDR1;
-      }
-      break;
-
-    case WAIT_PAYLOAD:
-      payloadBuf[payloadIdx++] = b;
-      if (payloadIdx >= expectedLen) {
-        state = WAIT_CHK;
-      }
-      break;
-
-    case WAIT_CHK: {
-      uint8_t checksum = 0;
-      for (uint8_t i = 0; i < expectedLen; i++) checksum ^= payloadBuf[i];
-      if (checksum == b) {
-        memcpy(&packet, payloadBuf, expectedLen);
-        onPacketReceived();
-      } else {
-        checksumErrors++;
-        Serial.println("[ERR] Checksum mismatch, packet dropped");
-      }
+  case WAIT_HDR2:
+    if (b == 0x55)
+      state = WAIT_LEN;
+    else
       state = WAIT_HDR1;
-      break;
+    break;
+
+  case WAIT_LEN:
+    expectedLen = b;
+    payloadIdx = 0;
+    if (expectedLen == PACKET_LEN && expectedLen <= sizeof(payloadBuf)) {
+      state = WAIT_PAYLOAD;
+    } else {
+      Serial.print("[ERR] Length mismatch, got ");
+      Serial.print(expectedLen);
+      Serial.print(" expected ");
+      Serial.println(PACKET_LEN);
+      state = WAIT_HDR1;
     }
+    break;
+
+  case WAIT_PAYLOAD:
+    payloadBuf[payloadIdx++] = b;
+    if (payloadIdx >= expectedLen) {
+      state = WAIT_CHK;
+    }
+    break;
+
+  case WAIT_CHK: {
+    uint8_t checksum = 0;
+    for (uint8_t i = 0; i < expectedLen; i++)
+      checksum ^= payloadBuf[i];
+    if (checksum == b) {
+      memcpy(&packet, payloadBuf, expectedLen);
+      onPacketReceived();
+    } else {
+      checksumErrors++;
+      Serial.println("[ERR] Checksum mismatch, packet dropped");
+    }
+    state = WAIT_HDR1;
+    break;
+  }
   }
 }
 
@@ -1614,8 +1714,9 @@ float haversineMeters(float lat1, float lon1, float lat2, float lon2) {
   const float R = 6371000.0;
   float dLat = radians(lat2 - lat1);
   float dLon = radians(lon2 - lon1);
-  float a = sin(dLat / 2) * sin(dLat / 2) +
-            cos(radians(lat1)) * cos(radians(lat2)) * sin(dLon / 2) * sin(dLon / 2);
+  float a = sin(dLat / 2) * sin(dLat / 2) + cos(radians(lat1)) *
+                                                cos(radians(lat2)) *
+                                                sin(dLon / 2) * sin(dLon / 2);
   float c = 2 * atan2(sqrt(a), sqrt(1 - a));
   return R * c;
 }
@@ -1662,11 +1763,13 @@ void computeRisk() {
   relPitch = packet.pitch - baselinePitch;
   relRoll = packet.roll - baselineRoll;
 
-  // ---- Tilt, measured relative to the calibrated baseline (not raw/absolute) ----
+  // ---- Tilt, measured relative to the calibrated baseline (not raw/absolute)
+  // ----
   float tilt = abs(relPitch) + abs(relRoll);
   float tiltScore = constrain((tilt / 45.0) * 100.0, 0, 100);
   if (tilt > tiltThresholdDeg) {
-    boxMovedAlertUntil = millis() + ALERT_HOLD_MS;   // (re)start the 1-minute hold
+    boxMovedAlertUntil =
+        millis() + ALERT_HOLD_MS; // (re)start the 1-minute hold
   }
   boxMovedAlert = (millis() < boxMovedAlertUntil);
 
@@ -1674,30 +1777,36 @@ void computeRisk() {
   // separate from the smoothed rate score used for the gradient risk score ----
   uint8_t vibNow = packet.vib1;
   if (vibNow > 0) {
-    vibrationAlertUntil = millis() + ALERT_HOLD_MS;   // (re)start the 1-minute hold
+    vibrationAlertUntil =
+        millis() + ALERT_HOLD_MS; // (re)start the 1-minute hold
   }
   vibrationAlert = (millis() < vibrationAlertUntil);
   vibHistory[vibHistIdx] = vibNow;
   vibHistIdx = (vibHistIdx + 1) % VIB_WINDOW;
   uint16_t vibSum = 0;
-  for (int i = 0; i < VIB_WINDOW; i++) vibSum += vibHistory[i];
+  for (int i = 0; i < VIB_WINDOW; i++)
+    vibSum += vibHistory[i];
   vibRateScore = constrain(((float)vibSum / VIB_WINDOW) * 100.0, 0, 100);
 
   // ---- Soil moisture trend (also doubles as a rainfall signal) ----
   float soilTrendScore = 0;
   if (soilHistFilled) {
-    float delta1 = (float)packet.soil1 - (float)soilHistory1[soilHistIdx % SOIL_HISTORY_SIZE];
+    float delta1 = (float)packet.soil1 -
+                   (float)soilHistory1[soilHistIdx % SOIL_HISTORY_SIZE];
     soilTrendScore = constrain((delta1 / 500.0) * 100.0, 0, 100);
   }
   soilHistory1[soilHistIdx % SOIL_HISTORY_SIZE] = packet.soil1;
-  if (soilHistIdx == 0) soilHistFilled = true;
+  if (soilHistIdx == 0)
+    soilHistFilled = true;
   soilPercent1 = soilPercentFromRaw(packet.soil1);
 
-  // Rising soil moisture with no shaking or tilt change reads as rain, not landslide
+  // Rising soil moisture with no shaking or tilt change reads as rain, not
+  // landslide
   rainfallLikely = (soilTrendScore > 15) && !vibrationAlert && tiltScore < 20;
 
   // ---- GPS displacement: debounced so normal GPS jitter (clouds, weather)
-  // doesn't falsely trigger an alert. Needs sustained drift over several readings. ----
+  // doesn't falsely trigger an alert. Needs sustained drift over several
+  // readings. ----
   float displacementBonus = 0;
   gpsDriftAlert = false;
   if (packet.gpsFix) {
@@ -1708,7 +1817,8 @@ void computeRisk() {
       distanceFromHome = 0;
       gpsDriftStreak = 0;
     } else {
-      distanceFromHome = haversineMeters(homeLat, homeLng, packet.latitude, packet.longitude);
+      distanceFromHome =
+          haversineMeters(homeLat, homeLng, packet.latitude, packet.longitude);
       if (distanceFromHome > geofenceRadiusM) {
         gpsDriftStreak++;
       } else {
@@ -1735,23 +1845,32 @@ void computeRisk() {
 
   // ---- Combine into a weighted score. Vibration gets an immediate jump
   // on top of its smoothed contribution, since any underground shaking matters.
-  // (waterScore term removed along with the sensor; soil's weight absorbs it) ----
-  float weighted = tiltScore * 0.20 + vibRateScore * 0.30 + soilTrendScore * 0.30;
-  if (vibrationAlert) weighted += 25;
+  // (waterScore term removed along with the sensor; soil's weight absorbs it)
+  // ----
+  float weighted =
+      tiltScore * 0.20 + vibRateScore * 0.30 + soilTrendScore * 0.30;
+  if (vibrationAlert)
+    weighted += 25;
   riskScore = (int)constrain(weighted + displacementBonus, 0, 100);
-  if (landslideWarning) riskScore = 100;   // MPU-confirmed ground displacement overrides everything else
+  if (landslideWarning)
+    riskScore =
+        100; // MPU-confirmed ground displacement overrides everything else
 
   if (riskScore < 25) {
-    riskLevel = "SAFE"; riskColor = "#2ecc71";
+    riskLevel = "SAFE";
+    riskColor = "#2ecc71";
     riskMessage = "Everything looks normal here. No danger right now.";
   } else if (riskScore < 50) {
-    riskLevel = "WATCH"; riskColor = "#f1c40f";
+    riskLevel = "WATCH";
+    riskColor = "#f1c40f";
     riskMessage = "Small changes noticed. Keep an eye on this area.";
   } else if (riskScore < 75) {
-    riskLevel = "WARNING"; riskColor = "#e67e22";
+    riskLevel = "WARNING";
+    riskColor = "#e67e22";
     riskMessage = "Ground conditions are getting worse. Be careful here.";
   } else {
-    riskLevel = "DANGER"; riskColor = "#e74c3c";
+    riskLevel = "DANGER";
+    riskColor = "#e74c3c";
     riskMessage = "High danger right now. Stay away from this area.";
   }
   if (landslideWarning) {
@@ -1770,8 +1889,10 @@ void computeRisk() {
 String buildEventLogJson() {
   String s = "[";
   for (int i = 0; i < eventLogCount; i++) {
-    if (i > 0) s += ",";
-    s += "{\"time\":\"" + eventLogTimes[i] + "\",\"level\":\"" + eventLogLevels[i] + "\"}";
+    if (i > 0)
+      s += ",";
+    s += "{\"time\":\"" + eventLogTimes[i] + "\",\"level\":\"" +
+         eventLogLevels[i] + "\"}";
   }
   s += "]";
   return s;
@@ -1791,14 +1912,16 @@ String buildEventLogJson() {
 void handleHistory() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
   if (!sdOk || !SD.exists(LOG_FILENAME)) {
-    server.send(200, "application/json", "{\"rows\":[],\"note\":\"No SD log available yet\"}");
+    server.send(200, "application/json",
+                "{\"rows\":[],\"note\":\"No SD log available yet\"}");
     return;
   }
 
   int wantRows = HISTORY_MAX_ROWS;
   if (server.hasArg("n")) {
     int n = server.arg("n").toInt();
-    if (n > 0 && n < HISTORY_MAX_ROWS) wantRows = n;
+    if (n > 0 && n < HISTORY_MAX_ROWS)
+      wantRows = n;
   }
 
   File f = SD.open(LOG_FILENAME, FILE_READ);
@@ -1808,23 +1931,28 @@ void handleHistory() {
   }
 
   size_t fsize = f.size();
-  size_t chunk = (fsize > (size_t)HISTORY_CHUNK_BYTES) ? (size_t)HISTORY_CHUNK_BYTES : fsize;
+  size_t chunk = (fsize > (size_t)HISTORY_CHUNK_BYTES)
+                     ? (size_t)HISTORY_CHUNK_BYTES
+                     : fsize;
   size_t startPos = (fsize > chunk) ? (fsize - chunk) : 0;
   f.seek(startPos);
 
   String buf;
   buf.reserve(chunk + 32);
-  while (f.available()) buf += (char)f.read();
+  while (f.available())
+    buf += (char)f.read();
   f.close();
 
   // If we started mid-file (log bigger than the chunk), the very first line
   // read is likely a partial row - drop it rather than risk a garbled entry.
   if (startPos > 0) {
     int firstNL = buf.indexOf('\n');
-    if (firstNL >= 0) buf = buf.substring(firstNL + 1);
+    if (firstNL >= 0)
+      buf = buf.substring(firstNL + 1);
   }
 
-  // Pass 1: record where each usable data line starts (skip header/blank lines).
+  // Pass 1: record where each usable data line starts (skip header/blank
+  // lines).
   int lineStarts[HISTORY_LINE_CAP];
   int totalLines = 0;
   int pos = 0;
@@ -1835,14 +1963,16 @@ void handleHistory() {
     if (end > pos && !buf.startsWith("rtcEpoch", pos)) {
       lineStarts[totalLines++] = pos;
     }
-    if (nl == -1) break;
+    if (nl == -1)
+      break;
     pos = nl + 1;
   }
 
   int rowsToSend = (totalLines < wantRows) ? totalLines : wantRows;
   int firstIdx = totalLines - rowsToSend;
 
-  // Pass 2: parse only the rows we're actually going to send, straight into JSON.
+  // Pass 2: parse only the rows we're actually going to send, straight into
+  // JSON.
   String out = "{\"rows\":[";
   bool firstOut = true;
   for (int i = firstIdx; i < totalLines; i++) {
@@ -1850,32 +1980,34 @@ void handleHistory() {
     int nl = buf.indexOf('\n', p0);
     String line = (nl == -1) ? buf.substring(p0) : buf.substring(p0, nl);
     line.trim();
-    if (line.length() == 0) continue;
+    if (line.length() == 0)
+      continue;
 
     String field[28];
     int fCount = 0, p = 0;
     while (fCount < 28) {
       int c = line.indexOf(',', p);
-      if (c == -1) { field[fCount++] = line.substring(p); break; }
+      if (c == -1) {
+        field[fCount++] = line.substring(p);
+        break;
+      }
       field[fCount++] = line.substring(p, c);
       p = c + 1;
     }
     // CSV column order (see sdInit's header row): 0 rtcEpoch, 4 relPitch,
     // 5 relRoll, 12 temperature, 13 humidity, 14 vib1, 16 soilPercent,
     // 21 distanceFromHome, 22 riskScore.
-    if (fCount < 24 || field[0].length() == 0 || field[22].length() == 0) continue;
+    if (fCount < 24 || field[0].length() == 0 || field[22].length() == 0)
+      continue;
 
-    if (!firstOut) out += ",";
+    if (!firstOut)
+      out += ",";
     firstOut = false;
     float tiltDeg = fabs(field[4].toFloat()) + fabs(field[5].toFloat());
-    out += "{\"t\":" + field[0] +
-           ",\"risk\":" + field[22] +
-           ",\"tilt\":" + String(tiltDeg, 1) +
-           ",\"vib\":" + field[14] +
-           ",\"soil\":" + field[16] +
-           ",\"temp\":" + field[12] +
-           ",\"hum\":" + field[13] +
-           ",\"dist\":" + field[21] + "}";
+    out += "{\"t\":" + field[0] + ",\"risk\":" + field[22] +
+           ",\"tilt\":" + String(tiltDeg, 1) + ",\"vib\":" + field[14] +
+           ",\"soil\":" + field[16] + ",\"temp\":" + field[12] +
+           ",\"hum\":" + field[13] + ",\"dist\":" + field[21] + "}";
   }
   out += "]}";
 
@@ -1884,96 +2016,72 @@ void handleHistory() {
 
 void handleData() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
-  unsigned long secsSinceLast = havePacket ? (millis() - lastPacketTime) / 1000 : 9999;
+  unsigned long secsSinceLast =
+      havePacket ? (millis() - lastPacketTime) / 1000 : 9999;
   bool linkUp = havePacket && secsSinceLast < 5;
 
   char json[2600];
-  snprintf(json, sizeof(json),
-    "{"
-    "\"linkUp\":%s,"
-    "\"secsSinceLast\":%lu,"
-    "\"packetCount\":%lu,"
-    "\"checksumErrors\":%lu,"
-    "\"freeHeap\":%u,"
-    "\"wifiRSSI\":%d,"
-    "\"uptimeSec\":%lu,"
-    "\"riskScore\":%d,"
-    "\"riskLevel\":\"%s\","
-    "\"riskColor\":\"%s\","
-    "\"riskMessage\":\"%s\","
-    "\"vibrationAlert\":%s,"
-    "\"gpsDriftAlert\":%s,"
-    "\"landslideWarning\":%s,"
-    "\"rainfallLikely\":%s,"
-    "\"calibrated\":%s,"
-    "\"baselinePitch\":%.1f,\"baselineRoll\":%.1f,"
-    "\"relPitch\":%.1f,\"relRoll\":%.1f,"
-    "\"boxMovedAlert\":%s,"
-    "\"tiltThreshold\":%.1f,"
-    "\"temperature\":%.1f,"
-    "\"humidity\":%.1f,"
-    "\"pitch\":%.1f,"
-    "\"roll\":%.1f,"
-    "\"accelX\":%.3f,\"accelY\":%.3f,\"accelZ\":%.3f,"
-    "\"gyroX\":%.2f,\"gyroY\":%.2f,\"gyroZ\":%.2f,"
-    "\"vib1\":%d,"
-    "\"vibRateScore\":%.1f,"
-    "\"soil1\":%d,"
-    "\"soilPercent\":%d,"
-    "\"gpsFix\":%d,\"lat\":%.6f,\"lng\":%.6f,\"sats\":%d,"
-    "\"homeSet\":%s,\"distanceFromHome\":%.1f,"
-    "\"homeLat\":%.6f,\"homeLng\":%.6f,\"homeIsManual\":%s,"
-    "\"geofenceRadius\":%.1f,"
-    "\"rtcEpoch\":%lu,"
-    "\"wifiSSID\":\"%s\",\"wifiIP\":\"%s\","
-    "\"ledStatus\":\"%s\","
-    "\"sdOk\":%s,\"logRows\":%lu,"
-    "\"eventLog\":%s"
-    "}",
-    linkUp ? "true" : "false",
-    secsSinceLast,
-    packetCount,
-    checksumErrors,
-    ESP.getFreeHeap(),
-    WiFi.RSSI(),
-    (unsigned long)(millis() / 1000UL),
-    riskScore,
-    riskLevel.c_str(),
-    riskColor.c_str(),
-    riskMessage.c_str(),
-    vibrationAlert ? "true" : "false",
-    gpsDriftAlert ? "true" : "false",
-    landslideWarning ? "true" : "false",
-    rainfallLikely ? "true" : "false",
-    calibrated ? "true" : "false",
-    baselinePitch, baselineRoll,
-    relPitch, relRoll,
-    boxMovedAlert ? "true" : "false",
-    tiltThresholdDeg,
-    packet.temperature,
-    packet.humidity,
-    packet.pitch,
-    packet.roll,
-    packet.accelX, packet.accelY, packet.accelZ,
-    packet.gyroX, packet.gyroY, packet.gyroZ,
-    packet.vib1,
-    vibRateScore,
-    packet.soil1,
-    soilPercent1,
-    packet.gpsFix, packet.latitude, packet.longitude, packet.satellites,
-    homeSet ? "true" : "false", distanceFromHome,
-    homeLat, homeLng, homeIsManual ? "true" : "false",
-    geofenceRadiusM,
-    (unsigned long)packet.rtcEpoch,
-    staSSID.c_str(), staIP.c_str(),
-    ledStatusText.c_str(),
-    sdOk ? "true" : "false", logRowsWritten,
-    buildEventLogJson().c_str()
-  );
+  snprintf(
+      json, sizeof(json),
+      "{"
+      "\"linkUp\":%s,"
+      "\"secsSinceLast\":%lu,"
+      "\"packetCount\":%lu,"
+      "\"checksumErrors\":%lu,"
+      "\"freeHeap\":%u,"
+      "\"wifiRSSI\":%d,"
+      "\"uptimeSec\":%lu,"
+      "\"riskScore\":%d,"
+      "\"riskLevel\":\"%s\","
+      "\"riskColor\":\"%s\","
+      "\"riskMessage\":\"%s\","
+      "\"vibrationAlert\":%s,"
+      "\"gpsDriftAlert\":%s,"
+      "\"landslideWarning\":%s,"
+      "\"rainfallLikely\":%s,"
+      "\"calibrated\":%s,"
+      "\"baselinePitch\":%.1f,\"baselineRoll\":%.1f,"
+      "\"relPitch\":%.1f,\"relRoll\":%.1f,"
+      "\"boxMovedAlert\":%s,"
+      "\"tiltThreshold\":%.1f,"
+      "\"temperature\":%.1f,"
+      "\"humidity\":%.1f,"
+      "\"pitch\":%.1f,"
+      "\"roll\":%.1f,"
+      "\"accelX\":%.3f,\"accelY\":%.3f,\"accelZ\":%.3f,"
+      "\"gyroX\":%.2f,\"gyroY\":%.2f,\"gyroZ\":%.2f,"
+      "\"vib1\":%d,"
+      "\"vibRateScore\":%.1f,"
+      "\"soil1\":%d,"
+      "\"soilPercent\":%d,"
+      "\"gpsFix\":%d,\"lat\":%.6f,\"lng\":%.6f,\"sats\":%d,"
+      "\"homeSet\":%s,\"distanceFromHome\":%.1f,"
+      "\"homeLat\":%.6f,\"homeLng\":%.6f,\"homeIsManual\":%s,"
+      "\"geofenceRadius\":%.1f,"
+      "\"rtcEpoch\":%lu,"
+      "\"wifiSSID\":\"%s\",\"wifiIP\":\"%s\","
+      "\"ledStatus\":\"%s\","
+      "\"sdOk\":%s,\"logRows\":%lu,"
+      "\"eventLog\":%s"
+      "}",
+      linkUp ? "true" : "false", secsSinceLast, packetCount, checksumErrors,
+      ESP.getFreeHeap(), WiFi.RSSI(), (unsigned long)(millis() / 1000UL),
+      riskScore, riskLevel.c_str(), riskColor.c_str(), riskMessage.c_str(),
+      vibrationAlert ? "true" : "false", gpsDriftAlert ? "true" : "false",
+      landslideWarning ? "true" : "false", rainfallLikely ? "true" : "false",
+      calibrated ? "true" : "false", baselinePitch, baselineRoll, relPitch,
+      relRoll, boxMovedAlert ? "true" : "false", tiltThresholdDeg,
+      packet.temperature, packet.humidity, packet.pitch, packet.roll,
+      packet.accelX, packet.accelY, packet.accelZ, packet.gyroX, packet.gyroY,
+      packet.gyroZ, packet.vib1, vibRateScore, packet.soil1, soilPercent1,
+      packet.gpsFix, packet.latitude, packet.longitude, packet.satellites,
+      homeSet ? "true" : "false", distanceFromHome, homeLat, homeLng,
+      homeIsManual ? "true" : "false", geofenceRadiusM,
+      (unsigned long)packet.rtcEpoch, staSSID.c_str(), staIP.c_str(),
+      ledStatusText.c_str(), sdOk ? "true" : "false", logRowsWritten,
+      buildEventLogJson().c_str());
 
   server.send(200, "application/json", json);
 }
 
-void handleRoot() {
-  server.send(200, "text/html", PAGE_HTML);
-}
+void handleRoot() { server.send(200, "text/html", PAGE_HTML); }

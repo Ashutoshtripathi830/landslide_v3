@@ -475,7 +475,6 @@ function updateSirenFromData(d) {
   let wanted = 'none';
   if (d.landslideWarning) wanted = 'landslide';
   else if (typeof soilSirenEndTime !== 'undefined' && Date.now() < soilSirenEndTime) wanted = 'landslide';
-  else if (d.vibrationAlert) wanted = 'vib';
 
   if (wanted === 'none') {
     acknowledgedPattern = 'none';
@@ -1196,7 +1195,7 @@ function refresh() {
     document.getElementById('chipGps').classList.toggle('show', !!d.gpsDriftAlert);
     document.getElementById('chipRain').classList.toggle('show', !!d.rainfallLikely);
     document.getElementById('chipLandslide').classList.toggle('show', !!d.landslideWarning);
-    document.getElementById('chipSiren').classList.toggle('show', !!(d.vibrationAlert || d.landslideWarning || (typeof soilSirenEndTime !== 'undefined' && Date.now() < soilSirenEndTime)));
+    document.getElementById('chipSiren').classList.toggle('show', !!(d.landslideWarning || (typeof soilSirenEndTime !== 'undefined' && Date.now() < soilSirenEndTime)));
 
     let currentSoilState = 0;
     if (d.soilPercent > 95) currentSoilState = 3;
@@ -1259,13 +1258,15 @@ function refresh() {
     document.getElementById('soilValue').textContent = d.soilPercent + '%';
 
     const tiltEl = document.getElementById('tiltValue');
-    tiltEl.textContent = 'Nil';
+    tiltEl.textContent = (Math.abs(d.relPitch) + Math.abs(d.relRoll)).toFixed(1) + '°';
     tiltEl.style.color = '';
     tiltEl.style.fontSize = '';
 
     const vibEl = document.getElementById('vibValue');
     vibEl.textContent = d.vibrationAlert ? 'Yes' : 'Nil';
-    vibEl.style.color = d.vibrationAlert ? '#c0392b' : '';
+    vibEl.parentElement.style.background = d.vibrationAlert ? '#f1c40f' : '';
+    vibEl.parentElement.style.color = d.vibrationAlert ? '#000' : '';
+    vibEl.style.color = '';
 
     const dispEl = document.getElementById('dispValue');
     if (d.gpsDriftAlert) {
