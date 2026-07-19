@@ -1755,7 +1755,7 @@ void computeRisk() {
     riskMessage = "High danger right now. Stay away from this area.";
   }
   if (landslideWarning) {
-    riskMessage = "GPS position shifted AND the box confirms tilt/vibration - this looks like an active landslide. Evacuate the area.";
+    riskMessage = "landslide, evacuate immediately";
   }
 
   if (riskLevel != prevRiskLevel) {

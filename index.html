@@ -1228,21 +1228,21 @@ function refresh() {
       soilCard.style.background = '#c0392b';
       soilCard.style.color = '#fff';
       if (now < soilAlertEndTime) {
-        chipSoil.textContent = "🚨 landslide imminent";
+        chipSoil.textContent = "🚨 LANDSLIDE IMMINENT";
         chipSoil.className = "alert-chip chip-landslide show";
         showSoilChip = true;
       }
     } else if (currentSoilState === 2) {
       soilCard.style.background = '#c0392b';
       soilCard.style.color = '#fff';
-      chipSoil.textContent = "Alert. High Risk of landslide if rainfall continues";
+      chipSoil.textContent = "ALERT. HIGH RISK OF LANDSLIDE IF RAINFALL CONTINUES";
       chipSoil.className = "alert-chip chip-full show";
       showSoilChip = true;
     } else if (currentSoilState === 1) {
       soilCard.style.background = '#f1c40f';
       soilCard.style.color = '#000';
       if (now < soilAlertEndTime) {
-        chipSoil.textContent = "Alert. If rainfall continues, possibility of landslide";
+        chipSoil.textContent = "ALERT. IF RAINFALL CONTINUES, POSSIBILITY OF LANDSLIDE";
         chipSoil.className = "alert-chip chip-vib show";
         showSoilChip = true;
       }
