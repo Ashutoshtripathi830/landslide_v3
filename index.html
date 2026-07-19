@@ -17,6 +17,24 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<style>
+.mini-card.alert-red {
+  background: #c0392b !important;
+  border-color: #7b241c !important;
+}
+.mini-card.alert-red .mini-value,
+.mini-card.alert-red .mini-label {
+  color: #fff !important;
+}
+.mini-card.alert-yellow {
+  background: #f1c40f !important;
+  border-color: #f39c12 !important;
+}
+.mini-card.alert-yellow .mini-value,
+.mini-card.alert-yellow .mini-label {
+  color: #111 !important;
+}
+</style>
 </head>
 <body>
 
@@ -57,6 +75,10 @@
     <div id="chipVib" class="alert-chip chip-vib">⚠️ Vibration detected underground — alerting for the next minute.</div>
     <div id="chipGps" class="alert-chip chip-gps">📡 GPS position drifting beyond the geofence — watching closely.</div>
     <div id="chipRain" class="alert-chip chip-rain">🌧️ Soil is getting wetter — rain may be softening the ground.</div>
+    <div id="chipSoil80" class="alert-chip chip-vib">⚠️ Alert. If rainfall continues, possibility of landslide</div>
+    <div id="chipSoil90" class="alert-chip chip-full">🚨 Alert. High Risk of landslide if rainfall continues</div>
+    <div id="chipSoil95" class="alert-chip chip-landslide">🚨 landslide imminent</div>
+    <div id="chipDispAlert" class="alert-chip chip-landslide">🚨 landslide, evacuate immediately</div>
     <div id="chipSiren" class="alert-chip chip-siren">🔊 Siren sounding</div>
   </div>
 
@@ -69,7 +91,7 @@
       <div id="humValue" class="mini-value">--%</div>
       <div class="mini-label">Humidity</div>
     </div>
-    <div class="mini-card">
+    <div class="mini-card" id="cardSoil">
       <div id="soilValue" class="mini-value">--%</div>
       <div class="mini-label">Soil Moisture</div>
     </div>
@@ -81,11 +103,11 @@
       <div id="tiltValue" class="mini-value">--</div>
       <div class="mini-label">Tilt</div>
     </div>
-    <div class="mini-card">
+    <div class="mini-card" id="cardVib">
       <div id="vibValue" class="mini-value">--</div>
       <div class="mini-label">Vibration</div>
     </div>
-    <div class="mini-card" style="position:relative;">
+    <div class="mini-card" style="position:relative;" id="cardDisp">
       <button class="tile-gear" onclick="toggleDispSettings()" title="Set displacement radius">&#9881;&#65039;</button>
       <div id="dispValue" class="mini-value">--</div>
       <div class="mini-label">Displacement</div>
@@ -470,9 +492,9 @@ function acknowledgeAlert() {
 
 // Decides which phone-siren pattern should be playing based on the latest /data,
 // same priority the firmware itself uses for its own buzzer.
-function updateSirenFromData(d) {
+function updateSirenFromData(d, isSoil95, isDisp3) {
   let wanted = 'none';
-  if (d.landslideWarning) wanted = 'landslide';
+  if (d.landslideWarning || isSoil95 || isDisp3) wanted = 'landslide';
   else if (d.boxMovedAlert) wanted = 'moved';
   else if (d.vibrationAlert) wanted = 'vib';
 
@@ -1156,6 +1178,9 @@ function setDispRadius() { postThreshold('/setgeofence', 'radius', 'dispRadiusIn
 
 let map = null, marker = null, mapReady = false;
 
+let soil80Until = 0;
+let soil95Until = 0;
+
 // Straight online map: tiles are pulled live from the public OpenStreetMap
 // server. The phone/laptop viewing this dashboard needs its own internet
 // connection for the map tiles to load (the receiver itself is unaffected -
@@ -1192,9 +1217,29 @@ function refresh() {
     document.getElementById('chipGps').classList.toggle('show', !!d.gpsDriftAlert);
     document.getElementById('chipRain').classList.toggle('show', !!d.rainfallLikely);
     document.getElementById('chipLandslide').classList.toggle('show', !!d.landslideWarning);
-    document.getElementById('chipSiren').classList.toggle('show', !!(d.vibrationAlert || d.boxMovedAlert || d.landslideWarning));
 
-    updateSirenFromData(d);
+    const now = Date.now();
+    if (d.soilPercent > 95) soil95Until = now + 5000;
+    if (d.soilPercent > 80 && d.soilPercent <= 90) soil80Until = now + 60000;
+
+    const isSoil95 = now < soil95Until;
+    const isSoil90 = !isSoil95 && d.soilPercent > 90;
+    const isSoil80 = !isSoil95 && !isSoil90 && (now < soil80Until || d.soilPercent > 80);
+    const isDisp3 = d.distanceFromHome > 3;
+
+    document.getElementById('chipSoil80').classList.toggle('show', isSoil80);
+    document.getElementById('chipSoil90').classList.toggle('show', isSoil90);
+    document.getElementById('chipSoil95').classList.toggle('show', isSoil95);
+    document.getElementById('chipDispAlert').classList.toggle('show', isDisp3);
+
+    document.getElementById('cardSoil').classList.toggle('alert-red', isSoil95 || isSoil90);
+    document.getElementById('cardSoil').classList.toggle('alert-yellow', isSoil80);
+    
+    document.getElementById('cardVib').classList.toggle('alert-yellow', !!d.vibrationAlert);
+
+    document.getElementById('chipSiren').classList.toggle('show', !!(d.vibrationAlert || d.boxMovedAlert || d.landslideWarning || isSoil95 || isDisp3));
+
+    updateSirenFromData(d, isSoil95, isDisp3);
     evaluateCustomRules(d);
 
     document.getElementById('tempValue').textContent = d.temperature.toFixed(1) + '\u00b0C';
